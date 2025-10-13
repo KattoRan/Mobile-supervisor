@@ -13,6 +13,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model AdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 // Lưu thông tin cố định của mỗi thiết bị
 model Device {
   id          String   @id @default(uuid()) // ID duy nhất cho mỗi thiết bị

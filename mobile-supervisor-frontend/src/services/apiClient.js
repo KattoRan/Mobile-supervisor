@@ -1,39 +1,42 @@
 import axios from "axios";
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
-const apiClient = axios.create({
+export const publicClient = axios.create({
   baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
-apiClient.interceptors.request.use(
+export const privateClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+privateClient.interceptors.request.use(
   (config) => {
     const token = sessionStorage.getItem("userToken");
     if (token) {
+      if (!config.headers) config.headers = {};
       config.headers["Authorization"] = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-apiClient.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+privateClient.interceptors.response.use(
+  (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      console.error(
-        "Unauthorized! Token is invalid or expired. Redirecting to login..."
-      );
+    if (error.response?.status === 401) {
+      console.warn("⚠️ Unauthorized: token invalid or expired.");
       sessionStorage.removeItem("user");
       sessionStorage.removeItem("userToken");
     }
     return Promise.reject(error);
   }
 );
-
-export default apiClient;

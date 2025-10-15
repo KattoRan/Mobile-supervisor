@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./login.module.css";
-import authService from "../../services/auth.js";
+import { useAuth } from "./AuthContext";
+import authService from "../services/auth.js";
 
 interface LoginFormData {
   email: string;
@@ -10,6 +11,7 @@ interface LoginFormData {
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState<LoginFormData>({
     email: "",
     password: "",
@@ -31,8 +33,9 @@ const Login: React.FC = () => {
     setError("");
 
     try {
-      await authService.login(formData.email, formData.password);
-      navigate("/");
+      const res = await authService.login(formData.email, formData.password);
+      login(res.user, res.accessToken);
+      navigate("/", { replace: true });
     } catch (err) {
       setError("Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.");
     } finally {

@@ -1,0 +1,82 @@
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+  padding: 12px;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 420px;
+  min-width: 240px;
+}
+
+.searchInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.actions > * {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.searchButton,
+.refreshButton,
+.logoutButton {
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  box-sizing: border-box;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.logoutButton {
+  margin-left: auto;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.select {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .search {
+    order: 1;
+    flex: 1 1 100%;
+  }
+  .actions {
+    order: 2;
+    width: 100%;
+  }
+  .logoutButton {
+    margin-left: 0;
+  }
+}

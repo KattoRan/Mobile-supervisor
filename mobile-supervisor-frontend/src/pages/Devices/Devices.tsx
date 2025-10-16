@@ -1,16 +1,17 @@
 import React, { useMemo, useState } from "react";
 import DeviceTable from "../../components/table/device/DeviceTable";
 import type { DeviceRow } from "../../components/table/device/DeviceRow";
+import RealtimeMap from "../../components/map/RealtimeMap";
 
 type TabKey = "list" | "map";
 
 const tabsWrap: React.CSSProperties = {
   display: "inline-flex",
   gap: 6,
-  background: "#f6f7f9",
   borderRadius: 8,
   padding: 4,
   marginBottom: 12,
+  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
 };
 
 const tabBtn = (active: boolean): React.CSSProperties => ({
@@ -98,16 +99,7 @@ const Devices: React.FC = () => {
         </button>
       </div>
 
-      {tab === "list" ? (
-        <DeviceTable data={data ?? []} />
-      ) : (
-        <div style={placeholder}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>
-            Bản đồ sẽ bổ sung sau
-          </div>
-          <div>Hiện tại chỉ hiển thị tab “Danh sách”.</div>
-        </div>
-      )}
+      {tab === "list" ? <DeviceTable data={data ?? []} /> : <RealtimeMap />}
     </div>
   );
 };

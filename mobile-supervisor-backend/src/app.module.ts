@@ -2,17 +2,16 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
-import { AdminUserModule } from './admin-user/admin-user.module';
 import { AuthModule } from './auth/auth.module';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './auth/jwt.guard';
-import { IngestController } from './ingest/ingest.controller';
-import { IngestService } from './ingest/ingest.service';
-import { IngestModule } from './ingest/ingest.module';
+import { UserModule } from './user/user.module';
+import { DataService } from './data/data.service';
+import { DataController } from './data/data.controller';
 
 @Module({
-  imports: [PrismaModule, AdminUserModule, AuthModule, IngestModule],
-  controllers: [AppController, IngestController],
-  providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }, IngestService],
+  imports: [PrismaModule, UserModule, AuthModule],
+  controllers: [AppController, DataController],
+  providers: [AppService, { provide: APP_GUARD, useClass: JwtAuthGuard }, DataService],
 })
 export class AppModule {}

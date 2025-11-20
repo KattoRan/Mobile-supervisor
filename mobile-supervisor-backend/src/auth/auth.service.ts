@@ -1,36 +1,137 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { AdminUserService } from '../admin-user/admin-user.service';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private users: AdminUserService,
+    private users: UserService,
     private jwt: JwtService,
   ) {}
 
   async validateUser(email: string, password: string) {
     const u = await this.users.findByEmail(email);
     if (!u) throw new UnauthorizedException('Email không tồn tại');
-    const ok = await bcrypt.compare(password, u.passwordHash);
-    if (!ok) throw new UnauthorizedException('Sai mật khẩu');
     return {
       id: u.id,
       email: u.email,
-      name: u.name,
-      role: (u as any).role ?? 'admin',
+      name: u.full_name,
     };
   }
 
-  async login(user: { id: string; email: string; name: string; role: string }) {
+  async login(user: { id: string; email: string; name: string }) {
     const payload = {
       sub: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
     };
     const accessToken = await this.jwt.sign(payload);
     return { accessToken, user: payload };
+  }
+
+  async register(data: {
+    fullName: string;
+    address?: string;
+    email: string;
+    citizenId: string;
+    phoneNumber: string;
+    device: {
+      model?: string;
+      type?: string;
+      os?: string;
+    };
+  }) {
+    // ===== VALIDATE FIELD =====
+    if (!data.fullName || !data.email || !data.citizenId || !data.phoneNumber) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Thiếu thông tin bắt buộc',
+        errors: {
+          field: 'fullName | email | citizenId | phoneNumber',
+          detail: 'Vui lòng kiểm tra lại dữ liệu gửi lên',
+        },
+      });
+    }
+
+    // ===== CHECK EMAIL =====
+    const emailExists = await this.users.findByEmail(data.email);
+    if (emailExists) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Email đã tồn tại',
+        errors: {
+          field: 'email',
+          detail: 'Email này đã được đăng ký trước đó',
+        },
+      });
+    }
+
+    // ===== CHECK CCCD =====
+    const cccdExists = await this.users.findByCitizenId(data.citizenId);
+    if (cccdExists) {
+      throw new BadRequestException({
+        success: false,
+        message: 'CCCD đã tồn tại',
+        errors: {
+          field: 'citizenId',
+          detail: 'Số CCCD đã được sử dụng',
+        },
+      });
+    }
+
+    // ===== CHECK PHONE NUMBER (TRONG BẢNG DEVICE) =====
+    const phoneExists = await this.users.findDeviceByPhone(data.phoneNumber);
+    if (phoneExists) {
+      throw new BadRequestException({
+        success: false,
+        message: 'Số điện thoại đã tồn tại',
+        errors: {
+          field: 'phoneNumber',
+          detail: 'SĐT này đã thuộc về một thiết bị khác',
+        },
+      });
+    }
+
+    // ===== CREATE USER =====
+    const user = await this.users.create({
+      full_name: data.fullName,
+      email: data.email,
+      address: data.address,
+      citizen_id: data.citizenId,
+    });
+
+    // ===== CREATE DEVICE =====
+    const device = await this.users.createDevice({
+      user_id: user.id,
+      phone_number: data.phoneNumber,
+      model: data.device.model,
+      type: data.device.type,
+      device_os: data.device.os,
+    });
+
+    // ===== CREATE JWT FOR DEVICE =====
+    const payload = {
+      sub: device.id,
+      userId: user.id,
+      phoneNumber: data.phoneNumber,
+    };
+
+    const accessToken = await this.jwt.sign(payload);
+
+    // ===== SUCCESS RESPONSE =====
+    return {
+      success: true,
+      message: 'Đăng ký thành công!',
+      data: {
+        userId: user.id,
+        deviceId: device.id,
+        accessToken,
+      },
+    };
   }
 }

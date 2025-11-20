@@ -4,7 +4,7 @@ import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
-import { AdminUserModule } from '../admin-user/admin-user.module';
+import { UserModule } from '../user/user.module';
 import type { StringValue } from 'ms';
 
 const expiresInEnv = process.env.JWT_EXPIRES as StringValue | undefined;
@@ -17,10 +17,10 @@ const expiresInEnv = process.env.JWT_EXPIRES as StringValue | undefined;
         expiresIn: expiresInEnv ?? ('7d' as const),
       },
     }),
-    AdminUserModule,
+    UserModule,
   ],
   providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

@@ -1,14 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BtsService } from '../bts/bts.service';
-import { EventsGateway } from '../events/events.gateway'; // Import Gateway
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class DataService {
   constructor(
     private prisma: PrismaService,
     private btsService: BtsService,
-    private eventsGateway: EventsGateway, // 1. Inject Gateway
+    private eventsGateway: EventsGateway,
   ) {}
 
   async saveData(deviceId: string, dto: any) {
@@ -16,14 +16,13 @@ export class DataService {
       throw new BadRequestException('Missing location data');
     }
 
-    // Nếu cellTowers không có hoặc rỗng, vẫn cho phép lưu vị trí (GPS only)
-    const cellTowers = Array.isArray(dto.cellTowers) ? dto.cellTowers : [];
     const { location } = dto;
+    const cellTowers = Array.isArray(dto.cellTowers) ? dto.cellTowers : [];
     const now = new Date();
 
-    // --- BƯỚC 1: LƯU DATABASE (Giữ nguyên logic của bạn) ---
+    // --- BƯỚC 1: LƯU DATABASE ---
     await this.prisma.$transaction(async (tx) => {
-      // Lưu vị trí
+      // 1. Lưu vị trí GPS
       await tx.location_history.create({
         data: {
           device_id: deviceId,
@@ -33,8 +32,9 @@ export class DataService {
         },
       });
 
+      // 2. Lưu danh sách Cell Towers
       if (cellTowers.length > 0) {
-        const towersData = cellTowers.map((tower) => ({
+        const towersData = cellTowers.map((tower, index) => ({
           device_id: deviceId,
           type: tower.type,
           mcc: tower.mcc,
@@ -45,6 +45,9 @@ export class DataService {
           signal_dbm: tower.signalDbm ?? null,
           pci: tower.pci ?? null,
           recorded_at: now,
+
+          // QUAN TRỌNG: Phần tử đầu tiên (index 0) là Serving Cell
+          is_serving: index === 0,
         }));
 
         await tx.cell_tower_history.createMany({
@@ -54,24 +57,25 @@ export class DataService {
       }
     });
 
-    // --- BƯỚC 2: BẮN SOCKET REALTIME CHO FRONTEND ---
-    // Lấy trạm BTS chính (Serving Cell) để vẽ dây nối trên bản đồ
-    // Thường là phần tử đầu tiên trong mảng hoặc trạm có signal tốt nhất
+    // --- BƯỚC 2: BẮN SOCKET REALTIME ---
+    // Chỉ lấy Serving Cell (index 0) để vẽ dây nối trên bản đồ
     const servingCell = cellTowers.length > 0 ? cellTowers[0] : null;
 
     this.eventsGateway.server.emit('device_moved', {
       deviceId: deviceId,
       lat: location.latitude,
       lon: location.longitude,
-      // Gửi thông tin trạm đang kết nối để Frontend vẽ đường kẻ
+
+      // Gửi thông tin Serving Cell để Frontend vẽ đường nối
       cid: servingCell?.cid,
       lac: servingCell?.lac,
-      rssi: servingCell?.rssi,
+      rssi: servingCell?.rssi ?? servingCell?.signalDbm, // Ưu tiên lấy RSSI hoặc dBm
+
       timestamp: now.toISOString(),
     });
 
-    // --- BƯỚC 3: TRA CỨU & LƯU THÔNG TIN TRẠM BTS (CHẠY NGẦM) ---
-    // Logic này giữ nguyên để làm giàu dữ liệu cho lần sau
+    // --- BƯỚC 3: TRA CỨU BTS (Background) ---
+    // Vẫn lookup tất cả (cả serving và neighbor) để làm giàu dữ liệu bản đồ
     if (cellTowers.length > 0) {
       Promise.allSettled(
         cellTowers.map((tower) =>

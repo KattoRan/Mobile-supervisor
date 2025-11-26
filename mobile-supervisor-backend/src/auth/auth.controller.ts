@@ -9,13 +9,6 @@ export class AuthController {
   constructor(private auth: AuthService) {}
 
   @Public()
-  @Post('login')
-  async login(@Body() body: { email: string; password: string }) {
-    const u = await this.auth.validateUser(body.email, body.password);
-    return this.auth.login(u);
-  }
-
-  @Public()
   @Post('login/admin')
   async loginAdmin(@Body() body: { username: string; password: string }) {
     const u = { username: body.username, pass: body.password };

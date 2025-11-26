@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +16,10 @@ export class AuthService {
     private jwt: JwtService,
     private prisma: PrismaService,
   ) {}
+
+  generateApiKey() {
+    return randomBytes(32).toString('hex');
+  }
 
   async validateUser(email: string, password: string) {
     const u = await this.users.findByEmail(email);
@@ -57,16 +62,6 @@ export class AuthService {
         username: user.username,
       },
     };
-  }
-
-  async login(user: { id: string; email: string; name: string }) {
-    const payload = {
-      sub: user.id,
-      email: user.email,
-      name: user.name,
-    };
-    const accessToken = await this.jwt.sign(payload);
-    return { accessToken, user: payload };
   }
 
   async register(data: {
@@ -119,7 +114,7 @@ export class AuthService {
       });
     }
 
-    // ===== CHECK PHONE NUMBER (TRONG BẢNG DEVICE) =====
+    // ===== CHECK PHONE NUMBER =====
     const phoneExists = await this.users.findDeviceByPhone(data.phoneNumber);
     if (phoneExists) {
       throw new BadRequestException({
@@ -140,6 +135,9 @@ export class AuthService {
       citizen_id: data.citizenId,
     });
 
+    // ===== GENERATE API KEY =====
+    const apiKey = this.generateApiKey();
+
     // ===== CREATE DEVICE =====
     const device = await this.users.createDevice({
       user_id: user.id,
@@ -147,16 +145,8 @@ export class AuthService {
       model: data.device.model,
       type: data.device.type,
       device_os: data.device.os,
+      api_key: apiKey,
     });
-
-    // ===== CREATE JWT FOR DEVICE =====
-    const payload = {
-      sub: device.id,
-      userId: user.id,
-      phoneNumber: data.phoneNumber,
-    };
-
-    const accessToken = await this.jwt.sign(payload);
 
     // ===== SUCCESS RESPONSE =====
     return {
@@ -165,7 +155,7 @@ export class AuthService {
       data: {
         userId: user.id,
         deviceId: device.id,
-        accessToken,
+        apiKey, // trả về cho thiết bị
       },
     };
   }

@@ -1,5 +1,4 @@
-// src/pages/Devices/DeviceDetail.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -10,10 +9,9 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import deviceService from "../../services/device.ts";
+import io from "socket.io-client"; // Import Socket
+import deviceService from "../../services/device";
 
-// --- CONFIG ICON LEAFLET ---
-// Fix lỗi icon mặc định không hiện trong React Leaflet
 import iconMarker from "leaflet/dist/images/marker-icon.png";
 import iconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
@@ -33,21 +31,48 @@ const btsIcon = new L.Icon({
   iconAnchor: [20, 40],
 });
 
-// --- TYPES (Định nghĩa ngay tại đây hoặc tách ra file riêng) ---
 interface DeviceDetailProps {
   deviceId: string;
-  onBack: () => void; // Hàm để quay lại bảng danh sách
+  onBack: () => void;
 }
 
 const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
-  const [data, setData] = useState<any>(null);
+  const [info, setInfo] = useState<any>(null);
+
+  const [currentPos, setCurrentPos] = useState<[number, number] | null>(null);
+  const [pathHistory, setPathHistory] = useState<[number, number][]>([]);
+  const [btsInfo, setBtsInfo] = useState<any>(null);
+  const [cellInfo, setCellInfo] = useState<any>(null);
+
   const [loading, setLoading] = useState(true);
 
   const fetchDetail = async () => {
     try {
       setLoading(true);
       const result = await deviceService.getById(deviceId);
-      setData(result);
+      setInfo(result);
+      if (result.current_location) {
+        const point: [number, number] = [
+          Number(result.current_location.latitude),
+          Number(result.current_location.longitude),
+        ];
+        setCurrentPos(point);
+        setPathHistory([point]);
+      }
+
+      // Xử lý thông tin trạm BTS
+      if (result.connected_station) {
+        setBtsInfo({
+          ...result.connected_station,
+          lat: Number(result.connected_station.lat),
+          lon: Number(result.connected_station.lon),
+        });
+      }
+
+      // Xử lý thông tin sóng
+      if (result.current_cell) {
+        setCellInfo(result.current_cell);
+      }
     } catch (error) {
       console.error("Lỗi tải dữ liệu:", error);
     } finally {
@@ -59,27 +84,40 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
     if (deviceId) fetchDetail();
   }, [deviceId]);
 
+  useEffect(() => {
+    if (!deviceId) return;
+
+    const socket = io("http://localhost:3000");
+
+    socket.on("device_moved", (payload: any) => {
+      if (payload.deviceId === deviceId) {
+        const newPoint: [number, number] = [
+          Number(payload.lat),
+          Number(payload.lon),
+        ];
+
+        setCurrentPos(newPoint);
+
+        setPathHistory((prev) => [...prev, newPoint]);
+
+        if (payload.rssi) {
+          setCellInfo((prev: any) => ({ ...prev, rssi: payload.rssi }));
+        }
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [deviceId]);
+
   if (loading) return <div className="p-4">Đang tải dữ liệu...</div>;
-  if (!data)
+  if (!info)
     return (
       <div className="p-4">
         Không tìm thấy thiết bị. <button onClick={onBack}>Quay lại</button>
       </div>
     );
-
-  // Xử lý dữ liệu bản đồ
-  const pathPositions: [number, number][] =
-    data.location_history?.map((loc: any) => [
-      Number(loc.latitude),
-      Number(loc.longitude),
-    ]) || [];
-
-  const currentPos =
-    pathPositions.length > 0 ? pathPositions[pathPositions.length - 1] : null;
-
-  const btsPos: [number, number] | null = data.connected_station
-    ? [Number(data.connected_station.lat), Number(data.connected_station.lon)]
-    : null;
 
   return (
     <div style={{ padding: "20px", background: "#fff", borderRadius: "8px" }}>
@@ -114,7 +152,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             cursor: "pointer",
           }}
         >
-          Làm mới
+          Làm mới (Reload BTS)
         </button>
       </div>
 
@@ -140,13 +178,13 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           </h3>
           <div style={{ lineHeight: "1.6" }}>
             <div>
-              <strong>Họ tên:</strong> {data.user?.full_name}
+              <strong>Họ tên:</strong> {info.user?.full_name}
             </div>
             <div>
-              <strong>CCCD:</strong> {data.user?.citizen_id}
+              <strong>CCCD:</strong> {info.user?.citizen_id}
             </div>
             <div>
-              <strong>Địa chỉ:</strong> {data.user?.address}
+              <strong>Địa chỉ:</strong> {info.user?.address}
             </div>
           </div>
         </div>
@@ -160,22 +198,22 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           }}
         >
           <h3 style={{ margin: "0 0 10px", color: "#374151" }}>
-            📱 Thiết bị & Kết nối
+            📱 Trạng thái kết nối
           </h3>
           <div style={{ lineHeight: "1.6" }}>
             <div>
-              <strong>Model:</strong> {data.model}
+              <strong>Model:</strong> {info.model}
             </div>
             <div>
-              <strong>SĐT:</strong> {data.phone_number}
+              <strong>SĐT:</strong> {info.phone_number}
+            </div>
+            <div style={{ color: "#2563eb" }}>
+              <strong>Trạm BTS:</strong> {btsInfo?.address || "Chưa xác định"}
+              {btsInfo && ` (CID: ${btsInfo.cid})`}
             </div>
             <div>
-              <strong>Trạm BTS:</strong>{" "}
-              {data.connected_station?.address || "Chưa xác định"}
-            </div>
-            <div>
-              <strong>Sóng (RSSI):</strong>{" "}
-              {data.current_cell?.signal_dbm || "N/A"} dBm
+              <strong>Chất lượng sóng:</strong>{" "}
+              {cellInfo?.signal_dbm || cellInfo?.rssi || "N/A"} dBm
             </div>
           </div>
         </div>
@@ -193,35 +231,57 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         {currentPos ? (
           <MapContainer
             center={currentPos}
-            zoom={14}
+            zoom={15}
             style={{ height: "100%", width: "100%" }}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
+            {/* 1. Đường đi (Vẽ dần khi thiết bị di chuyển) */}
             <Polyline
-              positions={pathPositions}
+              positions={pathHistory}
               color="blue"
               weight={4}
               opacity={0.6}
             />
 
+            {/* 2. Marker Thiết bị (Tại vị trí hiện tại) */}
             <Marker position={currentPos}>
-              <Popup>Vị trí thiết bị</Popup>
+              <Popup>
+                <b>{info.model}</b> <br />
+                Đang hoạt động <br />
+                {new Date().toLocaleTimeString()}
+              </Popup>
             </Marker>
 
-            {btsPos && (
+            {/* 3. Marker Trạm BTS và Dây nối */}
+            {btsInfo && (
               <>
-                <Marker position={btsPos} icon={btsIcon}>
-                  <Popup>Trạm BTS: {data.connected_station?.address}</Popup>
+                <Marker position={[btsInfo.lat, btsInfo.lon]} icon={btsIcon}>
+                  <Popup>
+                    <b>Trạm BTS</b>
+                    <br />
+                    {btsInfo.address}
+                    <br />
+                    CID: {btsInfo.cid}
+                  </Popup>
                 </Marker>
-                <Polyline
-                  positions={[currentPos, btsPos]}
-                  pathOptions={{ color: "red", dashArray: "10, 10" }}
-                />
+
+                {/* Vùng phủ sóng */}
                 <Circle
-                  center={btsPos}
-                  radius={data.connected_station?.range || 500}
-                  pathOptions={{ color: "red", fillOpacity: 0.1 }}
+                  center={[btsInfo.lat, btsInfo.lon]}
+                  radius={btsInfo.range || 500}
+                  pathOptions={{ color: "red", fillOpacity: 0.05, weight: 1 }}
+                />
+
+                {/* Dây nối: Thiết bị -> BTS */}
+                <Polyline
+                  positions={[currentPos, [btsInfo.lat, btsInfo.lon]]}
+                  pathOptions={{
+                    color: "red",
+                    dashArray: "10, 10",
+                    weight: 2,
+                    opacity: 0.8,
+                  }}
                 />
               </>
             )}
@@ -233,9 +293,10 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
               height: "100%",
               alignItems: "center",
               justifyContent: "center",
+              background: "#f9fafb",
             }}
           >
-            Chưa có dữ liệu vị trí
+            <p>Chưa có dữ liệu vị trí GPS.</p>
           </div>
         )}
       </div>

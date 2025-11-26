@@ -26,6 +26,7 @@ model users {
 
 model devices {
   id            String   @id @default(uuid())
+  api_key       String   @unique
   user_id       String
   phone_number  String   @unique
   model         String?
@@ -58,6 +59,7 @@ model cell_tower_history {
   cid         Int?
   pci         Int?
   type        String?
+  is_serving  Boolean  @default(false)
   rssi        Int?
   signal_dbm  Int?
   recorded_at DateTime

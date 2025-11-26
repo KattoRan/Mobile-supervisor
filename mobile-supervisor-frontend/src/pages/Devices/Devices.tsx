@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
+import io from "socket.io-client";
 import DeviceTable from "../../components/table/device/DeviceTable";
 import DeviceDetail from "./DeviceDetail";
 import deviceService from "../../services/device";
 import type { DeviceRow } from "../../components/table/device/DeviceRow";
 
-// --- STYLES ---
 const headerStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -44,26 +44,20 @@ const refreshBtn: React.CSSProperties = {
   gap: "5px",
 };
 
-// --- COMPONENT ---
 const Devices: React.FC = () => {
-  // view mode
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
 
-  // table data
   const [deviceData, setDeviceData] = useState<DeviceRow[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
-  // pagination
   const [page, setPage] = useState<number>(1);
-  const limit = 20; // bạn có thể thay đổi
-
+  const limit = 20;
   const [hasMore, setHasMore] = useState<boolean>(true);
 
-  // Mapping function
   const mapToDeviceRow = (item: any): DeviceRow => {
-    const lastLoc = item.location_history?.[0];
-    const lastCell = item.cell_tower_history?.[0];
+    const lastLoc = item.location_history?.[0] || item.last_location;
+    const lastCell = item.cell_tower_history?.[0] || item.last_cell;
 
     let status: "online" | "offline" | "idle" = "offline";
     const lastSeenTime = lastLoc?.recorded_at
@@ -98,18 +92,18 @@ const Devices: React.FC = () => {
     };
   };
 
-  // Fetch API with pagination
   const fetchDevices = useCallback(
     async (pageNumber: number, append: boolean = false) => {
-      if (loading) return;
+      if (loading && pageNumber !== 1) return;
 
       try {
         setLoading(true);
-        const rawData = await deviceService.getAll(pageNumber, limit); // <-- API phải hỗ trợ
+        const response = await deviceService.getAll(pageNumber, limit);
 
-        const mapped = rawData.data.map((item: any) => mapToDeviceRow(item));
+        const rawItems = Array.isArray(response) ? response : response.data;
 
-        // nếu số bản ghi < limit => hết data
+        const mapped = rawItems.map((item: any) => mapToDeviceRow(item));
+
         if (mapped.length < limit) setHasMore(false);
 
         if (append) {
@@ -126,23 +120,51 @@ const Devices: React.FC = () => {
     [loading]
   );
 
-  // Load page 1 khi vào trang
   useEffect(() => {
     setPage(1);
     setHasMore(true);
     fetchDevices(1, false);
   }, []);
 
-  // gọi khi scroll đến đáy
+  useEffect(() => {
+    const socket = io("http://localhost:3000");
+
+    socket.on("connect", () => {
+      console.log("Connected to Socket Server");
+    });
+
+    socket.on("device_moved", (payload: any) => {
+      setDeviceData((currentList) => {
+        return currentList.map((dev) => {
+          if (dev.id === payload.deviceId) {
+            return {
+              ...dev,
+              status: "online",
+              lastSeen: new Date(payload.timestamp).toLocaleString("vi-VN"),
+              gps: `${Number(payload.lat).toFixed(4)}, ${Number(
+                payload.lon
+              ).toFixed(4)}`,
+              cellId: payload.cid ? String(payload.cid) : dev.cellId,
+              lacTac: payload.lac ? String(payload.lac) : dev.lacTac,
+            };
+          }
+          return dev;
+        });
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
   const handleLoadMore = () => {
     if (loading || !hasMore) return;
-
     const nextPage = page + 1;
     setPage(nextPage);
     fetchDevices(nextPage, true);
   };
 
-  // handle view detail
   const handleViewDevice = (deviceId: string) => {
     setSelectedDeviceId(deviceId);
     setViewMode("detail");
@@ -151,13 +173,11 @@ const Devices: React.FC = () => {
   const handleBackToList = () => {
     setSelectedDeviceId(null);
     setViewMode("list");
-    // refresh page 1
     setPage(1);
     setHasMore(true);
     fetchDevices(1, false);
   };
 
-  // RENDER
   if (viewMode === "detail" && selectedDeviceId) {
     return (
       <DeviceDetail deviceId={selectedDeviceId} onBack={handleBackToList} />
@@ -167,17 +187,20 @@ const Devices: React.FC = () => {
   return (
     <div>
       <div style={headerStyle}>
-        {/* Tabs */}
         <div style={tabsWrap}>
           <button style={tabBtn(true)}>Danh sách thiết bị</button>
         </div>
 
         <button
           style={refreshBtn}
-          onClick={() => fetchDevices(1, false)}
+          onClick={() => {
+            setPage(1);
+            setHasMore(true);
+            fetchDevices(1, false);
+          }}
           disabled={loading}
         >
-          {loading ? "Đang tải..." : "🔄 Làm mới"}
+          {loading ? "Đang tải..." : "Làm mới"}
         </button>
       </div>
 
@@ -187,7 +210,6 @@ const Devices: React.FC = () => {
         hasMore={hasMore}
         onLoadMore={handleLoadMore}
         onViewDevice={handleViewDevice}
-        onViewUser={(userId) => console.log("Xem user:", userId)}
       />
     </div>
   );

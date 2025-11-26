@@ -20,8 +20,6 @@ export interface DeviceTableProps {
   data?: DeviceRow[];
   onRowClick?: (row: DeviceRow) => void;
   onViewDevice?: (deviceId: string) => void;
-  onViewUser?: (userId: string) => void;
-
   // Infinite scroll props
   onLoadMore?: () => void;
   hasMore?: boolean;
@@ -32,8 +30,6 @@ export const DeviceTable: React.FC<DeviceTableProps> = ({
   data = [],
   onRowClick,
   onViewDevice,
-  onViewUser,
-
   onLoadMore,
   hasMore = false,
   loading = false,

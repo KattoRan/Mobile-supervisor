@@ -37,6 +37,7 @@ export class UserService {
 
   async createDevice(data: {
     user_id: string;
+    api_key: string;
     phone_number: string;
     model?: string;
     type?: string;

@@ -73,3 +73,55 @@
 .sortIconActive {
   opacity: 1;
 }
+
+/* Căn giữa các nút */
+.actionGroup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* Khoảng cách giữa 2 nút */
+}
+
+/* Nút bấm hình vuông bo góc */
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #e5e7eb;
+  background-color: white;
+  color: #6b7280;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+
+/* Hiệu ứng hover chung */
+.actionBtn:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+  color: #111827;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Active effect */
+.actionBtn:active {
+  transform: translateY(0);
+}
+
+/* Màu riêng cho nút Xem thiết bị (Mobile icon) khi hover */
+.actionBtn:first-child:hover {
+  color: #2563eb; /* Màu xanh dương */
+  background-color: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+/* Màu riêng cho nút Xem User (User icon) khi hover */
+.actionBtn:last-child:hover {
+  color: #059669; /* Màu xanh lá */
+  background-color: #ecfdf5;
+  border-color: #a7f3d0;
+}

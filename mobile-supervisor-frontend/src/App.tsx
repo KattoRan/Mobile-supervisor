@@ -5,7 +5,6 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 import Layout from "./layout/Layout";
 import Devices from "./pages/Devices/Devices";
 import Overview from "./pages/Overview/Overview";
-import BTSLookup from "./pages/BTSLookup/BTSLookup";
 
 function App() {
   return (
@@ -27,14 +26,6 @@ function App() {
             element={
               <Layout>
                 <Devices />
-              </Layout>
-            }
-          />
-          <Route
-            path="/bts-lookup"
-            element={
-              <Layout>
-                <BTSLookup />
               </Layout>
             }
           />

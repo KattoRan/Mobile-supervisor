@@ -9,6 +9,11 @@ import { JwtAuthGuard } from './auth/jwt.guard';
 import { UserModule } from './user/user.module';
 import { DataService } from './data/data.service';
 import { DataController } from './data/data.controller';
+import { BtsService } from './bts/bts.service';
+import { BtsModule } from './bts/bts.module';
+import { DataModule } from './data/data.module';
+import { DeviceModule } from './device/device.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
@@ -18,12 +23,17 @@ import { DataController } from './data/data.controller';
     PrismaModule,
     UserModule,
     AuthModule,
+    BtsModule,
+    DataModule,
+    DeviceModule,
+    EventsModule,
   ],
   controllers: [AppController, DataController],
   providers: [
     AppService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     DataService,
+    BtsService,
   ],
 })
 export class AppModule {}

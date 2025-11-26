@@ -30,14 +30,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     try {
-      const token = sessionStorage.getItem("userToken");
+      const token = sessionStorage.getItem("token");
       const raw = sessionStorage.getItem("user");
       if (token && raw) {
         const parsed = JSON.parse(raw) as User;
         setUser(parsed);
       }
     } catch {
-      sessionStorage.removeItem("userToken");
+      sessionStorage.removeItem("token");
       sessionStorage.removeItem("user");
     } finally {
       setLoading(false);
@@ -45,13 +45,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const login = (u: User, token: string) => {
-    sessionStorage.setItem("userToken", token);
+    sessionStorage.setItem("token", token);
     sessionStorage.setItem("user", JSON.stringify(u));
     setUser(u);
   };
 
   const logout = () => {
-    sessionStorage.removeItem("userToken");
+    sessionStorage.removeItem("token");
     sessionStorage.removeItem("user");
     setUser(null);
   };

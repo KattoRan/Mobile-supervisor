@@ -23,14 +23,6 @@ export default function Sidebar() {
         >
           Thiết bị
         </NavLink>
-        <NavLink
-          to="/bts-lookup"
-          className={({ isActive }) =>
-            isActive ? `${styles.navItem} ${styles.active}` : styles.navItem
-          }
-        >
-          Tra cứu BTS
-        </NavLink>
       </nav>
     </aside>
   );

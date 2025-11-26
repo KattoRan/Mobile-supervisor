@@ -6,12 +6,14 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserService } from '../user/user.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private users: UserService,
     private jwt: JwtService,
+    private prisma: PrismaService,
   ) {}
 
   async validateUser(email: string, password: string) {
@@ -21,6 +23,39 @@ export class AuthService {
       id: u.id,
       email: u.email,
       name: u.full_name,
+    };
+  }
+
+  async loginAdmin(admin: { username: string; pass: string }) {
+    // 1. Tìm admin trong DB
+    const user = await this.prisma.admin.findUnique({
+      where: { username: admin.username },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Admin not found');
+    }
+
+    const isMatch = await bcrypt.compare(admin.pass, user.password);
+
+    if (!isMatch) {
+      throw new UnauthorizedException('Wrong password');
+    }
+
+    // 3. Tạo token
+    const payload = {
+      userId: user.id,
+      username: user.username,
+    };
+
+    const accessToken = await this.jwt.signAsync(payload);
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        username: user.username,
+      },
     };
   }
 

@@ -9,7 +9,7 @@ interface TopbarProps {
   onRefresh?: () => void;
 }
 
-export default function Topbar({ onSearch, onFilter, onRefresh }: TopbarProps) {
+export default function Topbar({ onSearch, onFilter }: TopbarProps) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("");
   const { logout } = useAuth();
@@ -53,14 +53,6 @@ export default function Topbar({ onSearch, onFilter, onRefresh }: TopbarProps) {
           <option value="active">Đang hoạt động</option>
           <option value="inactive">Ngừng hoạt động</option>
         </select>
-
-        <button
-          className={styles.refreshButton}
-          onClick={onRefresh}
-          type="button"
-        >
-          Làm mới
-        </button>
 
         <button
           className={styles.logoutButton}

@@ -64,3 +64,30 @@ model cell_tower_history {
 
   device devices @relation(fields: [device_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
 }
+
+// Thêm model này vào schema.prisma
+
+model bts_stations {
+  id        Int      @id @default(autoincrement())
+  mcc       Int
+  mnc       Int
+  lac       Int
+  cid       Int
+  
+  // Tọa độ của trạm BTS
+  lat       Decimal  @db.Decimal(10, 8)
+  lon       Decimal  @db.Decimal(11, 8)
+  
+  radio     String?  // Loại mạng: GSM, LTE, UMTS (3G)
+  range     Int?     // Bán kính phủ sóng ước tính (mét)
+  address   String?  // Địa chỉ ước lượng (nếu có)
+  
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Quan trọng: Tạo khóa unique để tránh lưu trùng lặp trạm
+  @@unique([mcc, mnc, lac, cid], name: "unique_cell_id")
+  
+  // Index để query nhanh hơn
+  @@index([mcc, mnc, lac, cid])
+}

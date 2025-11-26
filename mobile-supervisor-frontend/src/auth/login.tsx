@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./login.module.css";
 import { useAuth } from "./AuthContext";
-import authService from "../services/auth.js";
+import authService from "../services/auth.ts";
 
 interface LoginFormData {
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -13,7 +13,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [formData, setFormData] = useState<LoginFormData>({
-    email: "",
+    username: "",
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -33,11 +33,15 @@ const Login: React.FC = () => {
     setError("");
 
     try {
-      const res = await authService.login(formData.email, formData.password);
+      const res = await authService.loginAdmin(
+        formData.username,
+        formData.password
+      );
       login(res.user, res.accessToken);
       navigate("/", { replace: true });
     } catch (err) {
-      setError("Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.");
+      console.log(err);
+      setError("Đăng nhập thất bại. Vui lòng kiểm tra user và mật khẩu.");
     } finally {
       setIsLoading(false);
     }
@@ -57,17 +61,17 @@ const Login: React.FC = () => {
           {error && <div className={styles.errorMessage}>{error}</div>}
 
           <div className={styles.formGroup}>
-            <label htmlFor="email" className={styles.formLabel}>
-              Email
+            <label htmlFor="username" className={styles.formLabel}>
+              Username
             </label>
             <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
+              type="text"
+              id="username"
+              name="username"
+              value={formData.username}
               onChange={handleInputChange}
               className={styles.formInput}
-              placeholder="example@email.com"
+              placeholder="Nhập username"
               required
             />
           </div>

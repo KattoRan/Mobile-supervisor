@@ -16,6 +16,13 @@ export class AuthController {
   }
 
   @Public()
+  @Post('login/admin')
+  async loginAdmin(@Body() body: { username: string; password: string }) {
+    const u = { username: body.username, pass: body.password };
+    return this.auth.loginAdmin(u);
+  }
+
+  @Public()
   @Post('register')
   async register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);

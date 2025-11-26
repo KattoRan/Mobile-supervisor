@@ -1,7 +1,8 @@
 export type DeviceStatus = "online" | "offline" | "idle";
 
 export type DeviceRow = {
-  id: string;
+  id: string; // ID của thiết bị
+  userId: string; // ID của người dùng (Thêm mới)
   deviceName: string;
   userName: string;
   phoneNumber: string;
@@ -21,5 +22,3 @@ export const STATUS_COLOR_MAP: Record<
   offline: { bg: "#ffebea", fg: "#9f1f1a" },
   idle: { bg: "#fff7e6", fg: "#996a00" },
 };
-
-export default DeviceRow;

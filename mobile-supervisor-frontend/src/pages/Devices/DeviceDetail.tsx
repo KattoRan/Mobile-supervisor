@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from "react";
+// src/pages/Devices/DeviceDetail.tsx
+import React, { useEffect, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -9,9 +10,10 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import io from "socket.io-client"; // Import Socket
+import io from "socket.io-client";
 import deviceService from "../../services/device";
 
+// --- CONFIG ICON LEAFLET ---
 import iconMarker from "leaflet/dist/images/marker-icon.png";
 import iconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
@@ -25,10 +27,19 @@ const defaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = defaultIcon;
 
+// 1. Icon cho Serving Cell (Trạm chính - To rõ)
 const btsIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
   iconSize: [40, 40],
   iconAnchor: [20, 40],
+});
+
+// 2. Icon cho Neighbor Cell (Trạm hàng xóm - Nhỏ hơn, mờ hơn)
+const neighborIcon = new L.Icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png", // Dùng chung ảnh hoặc ảnh khác màu
+  iconSize: [30, 30], // Kích thước nhỏ hơn
+  iconAnchor: [15, 30],
+  className: "neighbor-marker", // Có thể style thêm CSS nếu muốn
 });
 
 interface DeviceDetailProps {
@@ -41,9 +52,13 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
 
   const [currentPos, setCurrentPos] = useState<[number, number] | null>(null);
   const [pathHistory, setPathHistory] = useState<[number, number][]>([]);
-  const [btsInfo, setBtsInfo] = useState<any>(null);
-  const [cellInfo, setCellInfo] = useState<any>(null);
 
+  // State cho trạm chính (Serving)
+  const [btsInfo, setBtsInfo] = useState<any>(null);
+  // State cho danh sách trạm hàng xóm (Neighbors)
+  const [neighborInfo, setNeighborInfo] = useState<any[]>([]);
+
+  const [cellInfo, setCellInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchDetail = async () => {
@@ -51,6 +66,8 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
       setLoading(true);
       const result = await deviceService.getById(deviceId);
       setInfo(result);
+
+      // Xử lý vị trí
       if (result.current_location) {
         const point: [number, number] = [
           Number(result.current_location.latitude),
@@ -60,13 +77,23 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         setPathHistory([point]);
       }
 
-      // Xử lý thông tin trạm BTS
+      // Xử lý Serving Cell (Trạm chính)
       if (result.connected_station) {
         setBtsInfo({
           ...result.connected_station,
           lat: Number(result.connected_station.lat),
           lon: Number(result.connected_station.lon),
         });
+      }
+
+      // Xử lý Neighbor Cells (Danh sách trạm phụ)
+      if (result.neighbor_stations && Array.isArray(result.neighbor_stations)) {
+        const neighbors = result.neighbor_stations.map((s: any) => ({
+          ...s,
+          lat: Number(s.lat),
+          lon: Number(s.lon),
+        }));
+        setNeighborInfo(neighbors);
       }
 
       // Xử lý thông tin sóng
@@ -86,7 +113,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
 
   useEffect(() => {
     if (!deviceId) return;
-
     const socket = io("http://localhost:3000");
 
     socket.on("device_moved", (payload: any) => {
@@ -95,14 +121,14 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           Number(payload.lat),
           Number(payload.lon),
         ];
-
         setCurrentPos(newPoint);
-
         setPathHistory((prev) => [...prev, newPoint]);
 
         if (payload.rssi) {
           setCellInfo((prev: any) => ({ ...prev, rssi: payload.rssi }));
         }
+
+        // Lưu ý: Nếu socket trả về cả serving cell mới, bạn có thể update btsInfo ở đây
       }
     });
 
@@ -156,7 +182,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         </button>
       </div>
 
-      {/* INFO PANELS */}
+      {/* INFO PANELS (Giữ nguyên) */}
       <div
         style={{
           display: "grid",
@@ -165,7 +191,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           marginBottom: "20px",
         }}
       >
-        {/* User Info */}
         <div
           style={{
             padding: "15px",
@@ -188,8 +213,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             </div>
           </div>
         </div>
-
-        {/* Device Info */}
         <div
           style={{
             padding: "15px",
@@ -208,11 +231,15 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
               <strong>SĐT:</strong> {info.phone_number}
             </div>
             <div style={{ color: "#2563eb" }}>
-              <strong>Trạm BTS:</strong> {btsInfo?.address || "Chưa xác định"}
+              <strong>Serving BTS:</strong>{" "}
+              {btsInfo?.address || "Chưa xác định"}
               {btsInfo && ` (CID: ${btsInfo.cid})`}
             </div>
             <div>
-              <strong>Chất lượng sóng:</strong>{" "}
+              <strong>Neighbors:</strong> {neighborInfo.length} trạm xung quanh
+            </div>
+            <div>
+              <strong>Signal:</strong>{" "}
               {cellInfo?.signal_dbm || cellInfo?.rssi || "N/A"} dBm
             </div>
           </div>
@@ -236,7 +263,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-            {/* 1. Đường đi (Vẽ dần khi thiết bị di chuyển) */}
+            {/* 1. Đường đi thiết bị */}
             <Polyline
               positions={pathHistory}
               color="blue"
@@ -244,8 +271,8 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
               opacity={0.6}
             />
 
-            {/* 2. Marker Thiết bị (Tại vị trí hiện tại) */}
-            <Marker position={currentPos}>
+            {/* 2. Marker Thiết bị */}
+            <Marker position={currentPos} zIndexOffset={1000}>
               <Popup>
                 <b>{info.model}</b> <br />
                 Đang hoạt động <br />
@@ -253,12 +280,16 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
               </Popup>
             </Marker>
 
-            {/* 3. Marker Trạm BTS và Dây nối */}
+            {/* 3. Serving Cell (CÓ DÂY NỐI, Marker To) */}
             {btsInfo && (
               <>
-                <Marker position={[btsInfo.lat, btsInfo.lon]} icon={btsIcon}>
+                <Marker
+                  position={[btsInfo.lat, btsInfo.lon]}
+                  icon={btsIcon}
+                  zIndexOffset={500} // Nổi hơn neighbor
+                >
                   <Popup>
-                    <b>Trạm BTS</b>
+                    <b style={{ color: "blue" }}>Serving Cell (Trạm chính)</b>
                     <br />
                     {btsInfo.address}
                     <br />
@@ -285,6 +316,24 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
                 />
               </>
             )}
+
+            {/* 4. Neighbor Cells (KHÔNG CÓ DÂY NỐI, Marker Nhỏ) */}
+            {neighborInfo.map((neighbor, idx) => (
+              <Marker
+                key={`neighbor-${idx}`}
+                position={[neighbor.lat, neighbor.lon]}
+                icon={neighborIcon} // Dùng icon nhỏ
+                opacity={0.7} // Mờ hơn trạm chính
+              >
+                <Popup>
+                  <b>Neighbor Cell (Hàng xóm)</b>
+                  <br />
+                  {neighbor.address}
+                  <br />
+                  CID: {neighbor.cid}
+                </Popup>
+              </Marker>
+            ))}
           </MapContainer>
         ) : (
           <div

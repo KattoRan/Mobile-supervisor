@@ -10,7 +10,7 @@ export class DataController {
   @Post('submit')
   @UseGuards(ApiKeyGuard)
   async submit(@Req() req, @Body() data: SubmitDataDto) {
-    const deviceId = req.deviceId;
+    const deviceId = req.user.id;
 
     await this.data.saveData(deviceId, data);
 

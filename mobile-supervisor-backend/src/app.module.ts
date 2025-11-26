@@ -29,11 +29,6 @@ import { EventsModule } from './events/events.module';
     EventsModule,
   ],
   controllers: [AppController, DataController],
-  providers: [
-    AppService,
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-    DataService,
-    BtsService,
-  ],
+  providers: [AppService, DataService, BtsService],
 })
 export class AppModule {}

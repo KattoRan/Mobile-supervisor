@@ -25,10 +25,12 @@ export class DataService {
       // 1. Lưu vị trí GPS
       await tx.location_history.create({
         data: {
-          device_id: deviceId,
           latitude: location.latitude,
           longitude: location.longitude,
           recorded_at: now,
+          device: {
+            connect: { id: deviceId },
+          },
         },
       });
 

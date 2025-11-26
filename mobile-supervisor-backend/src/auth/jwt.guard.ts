@@ -14,6 +14,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       ctx.getHandler(),
       ctx.getClass(),
     ]);
+
+    console.log('Vào jwt');
     if (isPublic) return true;
 
     const req = ctx.switchToHttp().getRequest<Request>();

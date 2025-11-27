@@ -18,28 +18,55 @@ export class DeviceService {
       orderBy: { last_seen: 'desc' },
       include: {
         user: true,
-        // Chỉ lấy vị trí mới nhất
         location_history: {
           orderBy: { recorded_at: 'desc' },
           take: 1,
         },
-        // Chỉ lấy trạm BTS mới nhất
-        cell_tower_history: {
-          where: { is_serving: true },
-          orderBy: { recorded_at: 'desc' },
-          take: 1,
-        },
+        cell_tower_history: true,
       },
     });
 
-    // Format dữ liệu gọn gàng cho Frontend
+    for (const device of devices) {
+      // 1) Lấy timestamp mới nhất
+      const latest = await this.prisma.cell_tower_history.findFirst({
+        where: { device_id: device.id },
+        orderBy: { recorded_at: 'desc' },
+        select: { recorded_at: true },
+      });
+
+      if (!latest) {
+        device.cell_tower_history = [];
+        continue;
+      }
+
+      // 2) Lấy tất cả cell có cùng timestamp
+      const cells = await this.prisma.cell_tower_history.findMany({
+        where: {
+          device_id: device.id,
+          recorded_at: latest.recorded_at,
+        },
+      });
+
+      if (cells.length === 0) {
+        device.cell_tower_history = [];
+        continue;
+      }
+
+      // 3) Lấy serving cell
+      const servingCell = cells.find((c) => c.is_serving) || cells[0];
+
+      // 4) Gán lại theo kiểu Prisma expect (array)
+      device.cell_tower_history = servingCell ? [servingCell] : [];
+    }
+
+    // ---- FORMAT DỮ LIỆU CHO FRONTEND ----
     const transformed = devices.map((device) => {
-      const lastLoc = device.location_history[0];
-      const lastCell = device.cell_tower_history[0];
+      const lastLoc = device.location_history?.[0];
+      const lastCell = device.cell_tower_history?.[0];
 
       return {
         ...device,
-        // Trả về object location đơn lẻ thay vì mảng
+
         last_location: lastLoc
           ? {
               latitude: Number(lastLoc.latitude),
@@ -48,7 +75,6 @@ export class DeviceService {
             }
           : null,
 
-        // Trả về object cell đơn lẻ
         last_cell: lastCell
           ? {
               cid: lastCell.cid,
@@ -56,10 +82,10 @@ export class DeviceService {
               mcc: lastCell.mcc,
               mnc: lastCell.mnc,
               rssi: lastCell.rssi,
+              recorded_at: lastCell.recorded_at,
             }
           : null,
 
-        // Xóa các trường thừa để payload nhẹ hơn
         location_history: undefined,
         cell_tower_history: undefined,
       };

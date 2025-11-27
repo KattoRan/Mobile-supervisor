@@ -113,7 +113,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
 
   useEffect(() => {
     if (!deviceId) return;
-    const socket = io("http://localhost:3000");
+    const socket = io("http://13.236.208.62:3000");
 
     socket.on("device_moved", (payload: any) => {
       if (payload.deviceId === deviceId) {

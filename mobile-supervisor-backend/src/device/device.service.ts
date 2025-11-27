@@ -25,6 +25,7 @@ export class DeviceService {
         },
         // Chỉ lấy trạm BTS mới nhất
         cell_tower_history: {
+          where: { is_serving: true },
           orderBy: { recorded_at: 'desc' },
           take: 1,
         },

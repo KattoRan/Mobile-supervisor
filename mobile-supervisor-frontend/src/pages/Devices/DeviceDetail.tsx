@@ -7,11 +7,14 @@ import {
   Popup,
   Polyline,
   Circle,
+  useMap,
+  useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import io from "socket.io-client";
 import deviceService from "../../services/device";
+import btsService from "../../services/bts";
 
 // --- CONFIG ICON LEAFLET ---
 import iconMarker from "leaflet/dist/images/marker-icon.png";
@@ -36,10 +39,18 @@ const btsIcon = new L.Icon({
 
 // 2. Icon cho Neighbor Cell (Trạm hàng xóm - Nhỏ hơn, mờ hơn)
 const neighborIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png", // Dùng chung ảnh hoặc ảnh khác màu
-  iconSize: [30, 30], // Kích thước nhỏ hơn
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
+  iconSize: [30, 30],
   iconAnchor: [15, 30],
-  className: "neighbor-marker", // Có thể style thêm CSS nếu muốn
+  className: "neighbor-marker",
+});
+
+// 3. Icon cho BTS trong viewport (Trạm phổ thông)
+const generalBtsIcon = new L.Icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
+  iconSize: [25, 25],
+  iconAnchor: [12, 25],
+  className: "general-bts-marker",
 });
 
 interface DeviceDetailProps {
@@ -47,9 +58,32 @@ interface DeviceDetailProps {
   onBack: () => void;
 }
 
+// Component để xử lý sự kiện bản đồ và load BTS
+const BtsLoader: React.FC<{
+  onBoundsChange: (bounds: L.LatLngBounds) => void;
+}> = ({ onBoundsChange }) => {
+  const map = useMap();
+
+  // Load BTS khi bản đồ di chuyển hoặc zoom
+  useMapEvents({
+    moveend: () => {
+      onBoundsChange(map.getBounds());
+    },
+    zoomend: () => {
+      onBoundsChange(map.getBounds());
+    },
+  });
+
+  // Load BTS lần đầu
+  useEffect(() => {
+    onBoundsChange(map.getBounds());
+  }, []);
+
+  return null;
+};
+
 const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
   const [info, setInfo] = useState<any>(null);
-
   const [currentPos, setCurrentPos] = useState<[number, number] | null>(null);
   const [pathHistory, setPathHistory] = useState<[number, number][]>([]);
 
@@ -57,9 +91,12 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
   const [btsInfo, setBtsInfo] = useState<any>(null);
   // State cho danh sách trạm hàng xóm (Neighbors)
   const [neighborInfo, setNeighborInfo] = useState<any[]>([]);
+  // State cho tất cả BTS trong viewport
+  const [allBtsInView, setAllBtsInView] = useState<any[]>([]);
 
   const [cellInfo, setCellInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingBts, setLoadingBts] = useState(false);
 
   const fetchDetail = async () => {
     try {
@@ -107,6 +144,34 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
     }
   };
 
+  // Hàm load BTS trong viewport
+  const loadBtsInViewport = async (bounds: L.LatLngBounds) => {
+    try {
+      setLoadingBts(true);
+      const params = {
+        minLat: bounds.getSouth(),
+        maxLat: bounds.getNorth(),
+        minLon: bounds.getWest(),
+        maxLon: bounds.getEast(),
+      };
+
+      const btsData = await btsService.getByBoundingBox(params);
+
+      // Chuyển đổi dữ liệu BTS
+      const formattedBts = (btsData || []).map((bts: any) => ({
+        ...bts,
+        lat: Number(bts.lat || bts.latitude),
+        lon: Number(bts.lon || bts.longitude),
+      }));
+
+      setAllBtsInView(formattedBts);
+    } catch (error) {
+      console.error("Lỗi load BTS:", error);
+    } finally {
+      setLoadingBts(false);
+    }
+  };
+
   useEffect(() => {
     if (deviceId) fetchDetail();
   }, [deviceId]);
@@ -127,8 +192,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         if (payload.rssi) {
           setCellInfo((prev: any) => ({ ...prev, rssi: payload.rssi }));
         }
-
-        // Lưu ý: Nếu socket trả về cả serving cell mới, bạn có thể update btsInfo ở đây
       }
     });
 
@@ -136,6 +199,16 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
       socket.disconnect();
     };
   }, [deviceId]);
+
+  // Lọc ra các BTS không phải serving và neighbor
+  const getGeneralBts = () => {
+    const servingCid = btsInfo?.cid;
+    const neighborCids = neighborInfo.map((n) => n.cid);
+
+    return allBtsInView.filter(
+      (bts) => bts.cid !== servingCid && !neighborCids.includes(bts.cid)
+    );
+  };
 
   if (loading) return <div className="p-4">Đang tải dữ liệu...</div>;
   if (!info)
@@ -182,7 +255,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         </button>
       </div>
 
-      {/* INFO PANELS (Giữ nguyên) */}
+      {/* INFO PANELS */}
       <div
         style={{
           display: "grid",
@@ -239,6 +312,10 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
               <strong>Neighbors:</strong> {neighborInfo.length} trạm xung quanh
             </div>
             <div>
+              <strong>BTS trong vùng:</strong> {allBtsInView.length} trạm
+              {loadingBts && " (đang tải...)"}
+            </div>
+            <div>
               <strong>Signal:</strong>{" "}
               {cellInfo?.signal_dbm || cellInfo?.rssi || "N/A"} dBm
             </div>
@@ -263,6 +340,9 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
+            {/* Component load BTS khi viewport thay đổi */}
+            <BtsLoader onBoundsChange={loadBtsInViewport} />
+
             {/* 1. Đường đi thiết bị */}
             <Polyline
               positions={pathHistory}
@@ -286,7 +366,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
                 <Marker
                   position={[btsInfo.lat, btsInfo.lon]}
                   icon={btsIcon}
-                  zIndexOffset={500} // Nổi hơn neighbor
+                  zIndexOffset={500}
                 >
                   <Popup>
                     <b style={{ color: "blue" }}>Serving Cell (Trạm chính)</b>
@@ -322,8 +402,8 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
               <Marker
                 key={`neighbor-${idx}`}
                 position={[neighbor.lat, neighbor.lon]}
-                icon={neighborIcon} // Dùng icon nhỏ
-                opacity={0.7} // Mờ hơn trạm chính
+                icon={neighborIcon}
+                opacity={0.7}
               >
                 <Popup>
                   <b>Neighbor Cell (Hàng xóm)</b>
@@ -333,6 +413,45 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
                   CID: {neighbor.cid}
                 </Popup>
               </Marker>
+            ))}
+
+            {/* 5. Tất cả BTS khác trong viewport */}
+            {getGeneralBts().map((bts, idx) => (
+              <React.Fragment key={`general-bts-${idx}`}>
+                <Marker
+                  position={[bts.lat, bts.lon]}
+                  icon={generalBtsIcon}
+                  opacity={0.5}
+                >
+                  <Popup>
+                    <b>BTS Station</b>
+                    <br />
+                    {bts.address || bts.name || "Không có địa chỉ"}
+                    <br />
+                    CID: {bts.cid}
+                    {bts.range && (
+                      <>
+                        <br />
+                        Range: {bts.range}m
+                      </>
+                    )}
+                  </Popup>
+                </Marker>
+
+                {/* Vùng phủ sóng cho BTS phổ thông (tùy chọn) */}
+                {bts.range && (
+                  <Circle
+                    center={[bts.lat, bts.lon]}
+                    radius={bts.range}
+                    pathOptions={{
+                      color: "gray",
+                      fillOpacity: 0.02,
+                      weight: 0.5,
+                      opacity: 0.3,
+                    }}
+                  />
+                )}
+              </React.Fragment>
             ))}
           </MapContainer>
         ) : (

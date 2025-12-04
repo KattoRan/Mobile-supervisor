@@ -4,8 +4,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
-import { APP_GUARD } from '@nestjs/core';
-import { JwtAuthGuard } from './auth/jwt.guard';
 import { UserModule } from './user/user.module';
 import { DataService } from './data/data.service';
 import { DataController } from './data/data.controller';
@@ -14,6 +12,7 @@ import { BtsModule } from './bts/bts.module';
 import { DataModule } from './data/data.module';
 import { DeviceModule } from './device/device.module';
 import { EventsModule } from './events/events.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -27,6 +26,7 @@ import { EventsModule } from './events/events.module';
     DataModule,
     DeviceModule,
     EventsModule,
+    DashboardModule,
   ],
   controllers: [AppController, DataController],
   providers: [AppService, DataService, BtsService],

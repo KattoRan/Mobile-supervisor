@@ -15,6 +15,7 @@ import "leaflet/dist/leaflet.css";
 import io from "socket.io-client";
 import deviceService from "../../services/device";
 import btsService from "../../services/bts";
+import DateRangeExportCSV from "../../components/exportCsv/exportCsv";
 
 // --- CONFIG ICON LEAFLET ---
 import iconMarker from "leaflet/dist/images/marker-icon.png";
@@ -253,6 +254,10 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         >
           Làm mới (Reload BTS)
         </button>
+      </div>
+
+      <div style={{ marginBottom: "20px" }}>
+        <DateRangeExportCSV deviceId={deviceId} deviceModel={info.model} />
       </div>
 
       {/* INFO PANELS */}

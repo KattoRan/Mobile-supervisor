@@ -25,4 +25,14 @@ export class DeviceController {
   async getDeviceDetail(@Param('id') id: string) {
     return this.deviceService.findOne(id);
   }
+
+  @Get(':id/history')
+  @UseGuards(JwtAuthGuard)
+  async getDeviceHistory(
+    @Param('id') id: string,
+    @Query('start') start: string,
+    @Query('end') end: string,
+  ) {
+    return this.deviceService.getHistory(id, start, end);
+  }
 }

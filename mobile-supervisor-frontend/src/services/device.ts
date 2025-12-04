@@ -18,6 +18,16 @@ const deviceService = {
     const response = await privateClient.get(`/devices/${id}`);
     return response.data;
   },
+
+  getHistory: async (deviceId: string, start: string, end: string) => {
+    const response = await privateClient.get(`/devices/${deviceId}/history`, {
+      params: {
+        start,
+        end,
+      },
+    });
+    return response.data;
+  },
 };
 
 export default deviceService;

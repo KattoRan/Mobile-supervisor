@@ -18,8 +18,16 @@ export class DeviceService {
       skip,
       take: limit,
       orderBy: { last_seen: 'desc' },
-      include: {
-        user: true,
+      select: {
+        id: true,
+        model: true,
+        phone_number: true,
+        user: {
+          select: {
+            id: true,
+            full_name: true,
+          },
+        },
         location_history: {
           orderBy: { recorded_at: 'desc' },
           take: 1,

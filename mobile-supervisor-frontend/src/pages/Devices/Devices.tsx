@@ -72,7 +72,7 @@ const Devices: React.FC = () => {
 
     return {
       id: item.id,
-      userId: item.user_id,
+      userId: item.user?.id || "",
       deviceName: item.model || "Không tên",
       userName: item.user?.full_name || "Chưa đăng ký",
       phoneNumber: item.phone_number,

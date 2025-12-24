@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config'; // <- thêm dòng này
+import { MqttModule } from './mqtt/mqtt.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -19,6 +20,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ConfigModule.forRoot({
       isGlobal: true, // <- làm global để có thể dùng ở tất cả module
     }),
+    MqttModule,
     PrismaModule,
     UserModule,
     AuthModule,

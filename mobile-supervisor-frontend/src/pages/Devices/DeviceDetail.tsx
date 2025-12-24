@@ -1,5 +1,11 @@
 // src/pages/Devices/DeviceDetail.tsx
-import React, { useEffect, useState } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   MapContainer,
   TileLayer,
@@ -17,11 +23,20 @@ import deviceService from "../../services/device";
 import btsService from "../../services/bts";
 import DateRangeExportCSV from "../../components/exportCsv/exportCsv";
 
-// --- CONFIG ICON LEAFLET ---
+// --- CẤU HÌNH ICON LEAFLET ---
 import iconMarker from "leaflet/dist/images/marker-icon.png";
 import iconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
 
+// --- HẰNG SỐ CẤU HÌNH ---
+const UPDATE_THROTTLE = 1000; // Tần suất update UI (ms)
+
+// CẤU HÌNH BỘ LỌC GPS
+const MIN_MOVE_THRESHOLD = 20; // Nếu di chuyển < 30m thì coi như đứng yên
+const BUFFER_SIZE = 5; // Số lượng điểm dùng để tính trung bình cộng (làm mượt)
+const MAX_SPEED_KPH = 150; // Nếu tốc độ > 150km/h thì coi là lỗi nhảy cóc
+
+// Fix lỗi icon mặc định
 const defaultIcon = L.icon({
   iconRetinaUrl: iconRetina,
   iconUrl: iconMarker,
@@ -31,14 +46,13 @@ const defaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = defaultIcon;
 
-// 1. Icon cho Serving Cell (Trạm chính - To rõ)
+// Các loại Icon tùy chỉnh
 const btsIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
   iconSize: [40, 40],
   iconAnchor: [20, 40],
 });
 
-// 2. Icon cho Neighbor Cell (Trạm hàng xóm - Nhỏ hơn, mờ hơn)
 const neighborIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
   iconSize: [30, 30],
@@ -46,7 +60,6 @@ const neighborIcon = new L.Icon({
   className: "neighbor-marker",
 });
 
-// 3. Icon cho BTS trong viewport (Trạm phổ thông)
 const generalBtsIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
   iconSize: [25, 25],
@@ -54,68 +67,89 @@ const generalBtsIcon = new L.Icon({
   className: "general-bts-marker",
 });
 
+// --- HÀM TÍNH KHOẢNG CÁCH (Haversine Formula) ---
+const getDistanceFromLatLonInMeters = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+) => {
+  const R = 6371; // Bán kính trái đất km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c;
+  return d * 1000; // Trả về mét
+};
+
 interface DeviceDetailProps {
   deviceId: string;
   onBack: () => void;
 }
 
-// Component để xử lý sự kiện bản đồ và load BTS
+// Component phụ để load BTS khi di chuyển map
 const BtsLoader: React.FC<{
   onBoundsChange: (bounds: L.LatLngBounds) => void;
 }> = ({ onBoundsChange }) => {
   const map = useMap();
-
-  // Load BTS khi bản đồ di chuyển hoặc zoom
   useMapEvents({
-    moveend: () => {
-      onBoundsChange(map.getBounds());
-    },
-    zoomend: () => {
-      onBoundsChange(map.getBounds());
-    },
+    moveend: () => onBoundsChange(map.getBounds()),
+    zoomend: () => onBoundsChange(map.getBounds()),
   });
-
-  // Load BTS lần đầu
   useEffect(() => {
     onBoundsChange(map.getBounds());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   return null;
 };
 
 const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
+  // --- STATE ---
   const [info, setInfo] = useState<any>(null);
   const [currentPos, setCurrentPos] = useState<[number, number] | null>(null);
-  const [pathHistory, setPathHistory] = useState<[number, number][]>([]);
+  const [cellInfo, setCellInfo] = useState<any>(null);
 
-  // State cho trạm chính (Serving)
   const [btsInfo, setBtsInfo] = useState<any>(null);
-  // State cho danh sách trạm hàng xóm (Neighbors)
   const [neighborInfo, setNeighborInfo] = useState<any[]>([]);
-  // State cho tất cả BTS trong viewport
   const [allBtsInView, setAllBtsInView] = useState<any[]>([]);
 
-  const [cellInfo, setCellInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [loadingBts, setLoadingBts] = useState(false);
 
+  // --- REFS ĐỂ XỬ LÝ LOGIC ---
+  const pendingUpdate = useRef<any>(null);
+  const lastUpdateTime = useRef<number>(0);
+  const updateTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Refs cho thuật toán lọc nhiễu
+  const lastValidPos = useRef<[number, number] | null>(null);
+  const positionBuffer = useRef<[number, number][]>([]);
+
+  // --- API CALL ---
   const fetchDetail = async () => {
     try {
       setLoading(true);
       const result = await deviceService.getById(deviceId);
       setInfo(result);
 
-      // Xử lý vị trí
       if (result.current_location) {
         const point: [number, number] = [
           Number(result.current_location.latitude),
           Number(result.current_location.longitude),
         ];
         setCurrentPos(point);
-        setPathHistory([point]);
+
+        // Khởi tạo trạng thái lọc
+        lastValidPos.current = point;
+        positionBuffer.current = [point];
       }
 
-      // Xử lý Serving Cell (Trạm chính)
       if (result.connected_station) {
         setBtsInfo({
           ...result.connected_station,
@@ -124,7 +158,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         });
       }
 
-      // Xử lý Neighbor Cells (Danh sách trạm phụ)
       if (result.neighbor_stations && Array.isArray(result.neighbor_stations)) {
         const neighbors = result.neighbor_stations.map((s: any) => ({
           ...s,
@@ -134,7 +167,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         setNeighborInfo(neighbors);
       }
 
-      // Xử lý thông tin sóng
       if (result.current_cell) {
         setCellInfo(result.current_cell);
       }
@@ -145,7 +177,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
     }
   };
 
-  // Hàm load BTS trong viewport
   const loadBtsInViewport = async (bounds: L.LatLngBounds) => {
     try {
       setLoadingBts(true);
@@ -155,19 +186,15 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         minLon: bounds.getWest(),
         maxLon: bounds.getEast(),
       };
-
       const btsData = await btsService.getByBoundingBox(params);
-
-      // Chuyển đổi dữ liệu BTS
       const formattedBts = (btsData || []).map((bts: any) => ({
         ...bts,
         lat: Number(bts.lat || bts.latitude),
         lon: Number(bts.lon || bts.longitude),
       }));
-
       setAllBtsInView(formattedBts);
     } catch (error) {
-      console.error("Lỗi load BTS:", error);
+      console.error("Lỗi tải BTS:", error);
     } finally {
       setLoadingBts(false);
     }
@@ -175,41 +202,168 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
 
   useEffect(() => {
     if (deviceId) fetchDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
 
+  // --- XỬ LÝ BATCH UPDATE VỚI THUẬT TOÁN LỌC ---
+  const processBatchUpdate = useCallback(() => {
+    if (!pendingUpdate.current) return;
+
+    const payload = pendingUpdate.current;
+    pendingUpdate.current = null;
+
+    const rawLat = Number(payload.lat);
+    const rawLon = Number(payload.lon);
+
+    // 1. Lọc theo độ chính xác của thiết bị (nếu có)
+    if (payload.accuracy && payload.accuracy > 100) {
+      console.log("Bỏ qua do độ chính xác kém:", payload.accuracy);
+      return;
+    }
+
+    // 2. Thuật toán Moving Average (Trung bình trượt)
+    positionBuffer.current.push([rawLat, rawLon]);
+    if (positionBuffer.current.length > BUFFER_SIZE) {
+      positionBuffer.current.shift();
+    }
+
+    const avgLat =
+      positionBuffer.current.reduce((a, b) => a + b[0], 0) /
+      positionBuffer.current.length;
+    const avgLon =
+      positionBuffer.current.reduce((a, b) => a + b[1], 0) /
+      positionBuffer.current.length;
+
+    // 3. Logic kiểm tra khoảng cách và tốc độ
+    let isValidMove = true;
+
+    if (lastValidPos.current) {
+      const dist = getDistanceFromLatLonInMeters(
+        lastValidPos.current[0],
+        lastValidPos.current[1],
+        avgLat,
+        avgLon
+      );
+
+      // Điều kiện A: Nếu di chuyển < 30m -> coi như nhiễu
+      if (dist < MIN_MOVE_THRESHOLD) {
+        isValidMove = false;
+        console.log(`Bỏ qua do di chuyển nhỏ: ${dist.toFixed(1)}m`);
+      }
+      // Điều kiện B: Nếu di chuyển quá nhanh (teleport)
+      else {
+        const timeDiff = (Date.now() - lastUpdateTime.current) / 1000;
+        if (timeDiff > 0) {
+          const speedKph = (dist / timeDiff) * 3.6;
+          if (speedKph > MAX_SPEED_KPH) {
+            console.log(`Bỏ qua do tốc độ ảo: ${speedKph.toFixed(0)} km/h`);
+            isValidMove = false;
+          }
+        }
+      }
+    }
+
+    // --- CẬP NHẬT STATE ---
+
+    // 1. LUÔN cập nhật thông tin Cell/Signal realtime (dù vị trí có thay đổi hay không)
+    if (payload.current_cell || payload.rssi || payload.signal_dbm) {
+      setCellInfo((prev: any) => ({
+        ...prev,
+        ...(payload.current_cell || {}),
+        rssi: payload.rssi || payload.current_cell?.rssi || prev?.rssi,
+        signal_dbm:
+          payload.signal_dbm ||
+          payload.current_cell?.signal_dbm ||
+          prev?.signal_dbm,
+      }));
+    }
+
+    // 2. LUÔN cập nhật BTS info realtime (serving cell mới)
+    if (payload.connected_station) {
+      const newBtsInfo = {
+        ...payload.connected_station,
+        lat: Number(payload.connected_station.lat),
+        lon: Number(payload.connected_station.lon),
+      };
+      setBtsInfo(newBtsInfo);
+      console.log("Cập nhật Serving BTS mới:", newBtsInfo.cid);
+    }
+
+    // 3. LUÔN cập nhật neighbor stations realtime
+    if (payload.neighbor_stations && Array.isArray(payload.neighbor_stations)) {
+      const neighbors = payload.neighbor_stations.map((s: any) => ({
+        ...s,
+        lat: Number(s.lat),
+        lon: Number(s.lon),
+      }));
+      setNeighborInfo(neighbors);
+      console.log("Cập nhật Neighbors:", neighbors.length, "trạm");
+    }
+
+    // 4. Nếu vị trí HỢP LỆ -> Cập nhật vị trí thiết bị trên map
+    if (isValidMove) {
+      const validPoint: [number, number] = [avgLat, avgLon];
+      lastValidPos.current = validPoint;
+      setCurrentPos(validPoint);
+
+      console.log(
+        `✓ Cập nhật vị trí mới: ${avgLat.toFixed(6)}, ${avgLon.toFixed(6)}`
+      );
+
+      // Cập nhật thông tin device info
+      if (payload.device) {
+        setInfo((prev: any) => ({
+          ...prev,
+          ...payload.device,
+          current_location: { latitude: avgLat, longitude: avgLon },
+        }));
+      }
+    } else {
+      console.log("✗ Giữ nguyên vị trí cũ (movement không hợp lệ)");
+    }
+
+    lastUpdateTime.current = Date.now();
+  }, []);
+
+  // --- SOCKET LISTENER ---
   useEffect(() => {
     if (!deviceId) return;
     const socket = io("http://13.236.208.62:3000");
 
     socket.on("device_moved", (payload: any) => {
       if (payload.deviceId === deviceId) {
-        const newPoint: [number, number] = [
-          Number(payload.lat),
-          Number(payload.lon),
-        ];
-        setCurrentPos(newPoint);
-        setPathHistory((prev) => [...prev, newPoint]);
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdateTime.current;
 
-        if (payload.rssi) {
-          setCellInfo((prev: any) => ({ ...prev, rssi: payload.rssi }));
+        pendingUpdate.current = payload;
+
+        // Cơ chế Throttle
+        if (timeSinceLastUpdate >= UPDATE_THROTTLE) {
+          if (updateTimeout.current) clearTimeout(updateTimeout.current);
+          processBatchUpdate();
+        } else {
+          if (updateTimeout.current) clearTimeout(updateTimeout.current);
+          updateTimeout.current = setTimeout(() => {
+            processBatchUpdate();
+          }, UPDATE_THROTTLE - timeSinceLastUpdate);
         }
       }
     });
 
     return () => {
+      if (updateTimeout.current) clearTimeout(updateTimeout.current);
       socket.disconnect();
     };
-  }, [deviceId]);
+  }, [deviceId, processBatchUpdate]);
 
-  // Lọc ra các BTS không phải serving và neighbor
-  const getGeneralBts = () => {
+  // Memo: Lọc BTS hiển thị
+  const filteredGeneralBts = useMemo(() => {
     const servingCid = btsInfo?.cid;
-    const neighborCids = neighborInfo.map((n) => n.cid);
-
+    const neighborCids = new Set(neighborInfo.map((n) => n.cid));
     return allBtsInView.filter(
-      (bts) => bts.cid !== servingCid && !neighborCids.includes(bts.cid)
+      (bts) => bts.cid !== servingCid && !neighborCids.has(bts.cid)
     );
-  };
+  }, [allBtsInView, btsInfo, neighborInfo]);
 
   if (loading) return <div className="p-4">Đang tải dữ liệu...</div>;
   if (!info)
@@ -235,7 +389,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             padding: "8px 16px",
             border: "1px solid #ccc",
             borderRadius: "4px",
-            cursor: "pointer",
             background: "#f3f4f6",
           }}
         >
@@ -249,10 +402,9 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             color: "#fff",
             border: "none",
             borderRadius: "4px",
-            cursor: "pointer",
           }}
         >
-          Làm mới (Reload BTS)
+          Làm mới
         </button>
       </div>
 
@@ -279,7 +431,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           <h3 style={{ margin: "0 0 10px", color: "#374151" }}>
             👤 Thông tin chủ sở hữu
           </h3>
-          <div style={{ lineHeight: "1.6" }}>
+          <div>
             <div>
               <strong>Họ tên:</strong> {info.user?.full_name}
             </div>
@@ -301,24 +453,16 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
           <h3 style={{ margin: "0 0 10px", color: "#374151" }}>
             📱 Trạng thái kết nối
           </h3>
-          <div style={{ lineHeight: "1.6" }}>
+          <div>
             <div>
               <strong>Model:</strong> {info.model}
             </div>
-            <div>
-              <strong>SĐT:</strong> {info.phone_number}
-            </div>
             <div style={{ color: "#2563eb" }}>
               <strong>Serving BTS:</strong>{" "}
-              {btsInfo?.address || "Chưa xác định"}
-              {btsInfo && ` (CID: ${btsInfo.cid})`}
+              {btsInfo?.address || "Chưa xác định"} (CID: {btsInfo?.cid})
             </div>
             <div>
-              <strong>Neighbors:</strong> {neighborInfo.length} trạm xung quanh
-            </div>
-            <div>
-              <strong>BTS trong vùng:</strong> {allBtsInView.length} trạm
-              {loadingBts && " (đang tải...)"}
+              <strong>Neighbors:</strong> {neighborInfo.length} trạm
             </div>
             <div>
               <strong>Signal:</strong>{" "}
@@ -328,7 +472,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
         </div>
       </div>
 
-      {/* MAP */}
+      {/* MAP CONTAINER */}
       <div
         style={{
           height: "500px",
@@ -344,29 +488,19 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             style={{ height: "100%", width: "100%" }}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
-            {/* Component load BTS khi viewport thay đổi */}
             <BtsLoader onBoundsChange={loadBtsInViewport} />
 
-            {/* 1. Đường đi thiết bị */}
-            <Polyline
-              positions={pathHistory}
-              color="blue"
-              weight={4}
-              opacity={0.6}
-            />
-
-            {/* 2. Marker Thiết bị */}
+            {/* Marker Thiết bị */}
             <Marker position={currentPos} zIndexOffset={1000}>
               <Popup>
-                <b>{info.model}</b> <br />
-                Đang hoạt động <br />
+                <b>{info.model}</b>
+                <br />
                 {new Date().toLocaleTimeString()}
               </Popup>
             </Marker>
 
-            {/* 3. Serving Cell (CÓ DÂY NỐI, Marker To) */}
-            {btsInfo && (
+            {/* Serving BTS */}
+            {btsInfo && btsInfo.lat && (
               <>
                 <Marker
                   position={[btsInfo.lat, btsInfo.lon]}
@@ -374,89 +508,59 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
                   zIndexOffset={500}
                 >
                   <Popup>
-                    <b style={{ color: "blue" }}>Serving Cell (Trạm chính)</b>
+                    <b style={{ color: "blue" }}>Serving Cell</b>
                     <br />
                     {btsInfo.address}
                     <br />
                     CID: {btsInfo.cid}
                   </Popup>
                 </Marker>
-
-                {/* Vùng phủ sóng */}
                 <Circle
                   center={[btsInfo.lat, btsInfo.lon]}
                   radius={btsInfo.range || 500}
                   pathOptions={{ color: "red", fillOpacity: 0.05, weight: 1 }}
                 />
-
-                {/* Dây nối: Thiết bị -> BTS */}
                 <Polyline
                   positions={[currentPos, [btsInfo.lat, btsInfo.lon]]}
-                  pathOptions={{
-                    color: "red",
-                    dashArray: "10, 10",
-                    weight: 2,
-                    opacity: 0.8,
-                  }}
+                  pathOptions={{ color: "red", dashArray: "10, 10", weight: 2 }}
                 />
               </>
             )}
 
-            {/* 4. Neighbor Cells (KHÔNG CÓ DÂY NỐI, Marker Nhỏ) */}
-            {neighborInfo.map((neighbor, idx) => (
+            {/* Neighbor BTS */}
+            {neighborInfo.map((n, i) => (
               <Marker
-                key={`neighbor-${idx}`}
-                position={[neighbor.lat, neighbor.lon]}
+                key={`n-${i}`}
+                position={[n.lat, n.lon]}
                 icon={neighborIcon}
                 opacity={0.7}
               >
                 <Popup>
-                  <b>Neighbor Cell (Hàng xóm)</b>
+                  <b>Neighbor</b>
                   <br />
-                  {neighbor.address}
+                  {n.address}
                   <br />
-                  CID: {neighbor.cid}
+                  CID: {n.cid}
                 </Popup>
               </Marker>
             ))}
 
-            {/* 5. Tất cả BTS khác trong viewport */}
-            {getGeneralBts().map((bts, idx) => (
-              <React.Fragment key={`general-bts-${idx}`}>
-                <Marker
-                  position={[bts.lat, bts.lon]}
-                  icon={generalBtsIcon}
-                  opacity={0.5}
-                >
-                  <Popup>
-                    <b>BTS Station</b>
-                    <br />
-                    {bts.address || bts.name || "Không có địa chỉ"}
-                    <br />
-                    CID: {bts.cid}
-                    {bts.range && (
-                      <>
-                        <br />
-                        Range: {bts.range}m
-                      </>
-                    )}
-                  </Popup>
-                </Marker>
-
-                {/* Vùng phủ sóng cho BTS phổ thông (tùy chọn) */}
-                {bts.range && (
-                  <Circle
-                    center={[bts.lat, bts.lon]}
-                    radius={bts.range}
-                    pathOptions={{
-                      color: "gray",
-                      fillOpacity: 0.02,
-                      weight: 0.5,
-                      opacity: 0.3,
-                    }}
-                  />
-                )}
-              </React.Fragment>
+            {/* General BTS */}
+            {filteredGeneralBts.map((bts, i) => (
+              <Marker
+                key={`g-${i}`}
+                position={[bts.lat, bts.lon]}
+                icon={generalBtsIcon}
+                opacity={0.5}
+              >
+                <Popup>
+                  <b>BTS</b>
+                  <br />
+                  {bts.address}
+                  <br />
+                  CID: {bts.cid}
+                </Popup>
+              </Marker>
             ))}
           </MapContainer>
         ) : (

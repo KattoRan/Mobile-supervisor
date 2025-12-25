@@ -14,18 +14,33 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const host = this.configService.get<string>('MQTT_HOST');
-    const port = this.configService.get<number>('MQTT_PORT');
+    const port = this.configService.get<number>('MQTT_PORT') ?? 8883;
     const username = this.configService.get<string>('MQTT_USER');
     const password = this.configService.get<string>('MQTT_PASS');
+
+    if (!host || !username || !password) {
+      console.error('Missing MQTT config (HOST / USER / PASS)');
+      return;
+    }
 
     const url = `mqtts://${host}:${port}`;
 
     this.client = mqtt.connect(url, {
+      // AUTH
       username,
       password,
-      protocol: 'mqtts',
-      reconnectPeriod: 1000,
+
+      // CLIENT ID (BẮT BUỘC DUY NHẤT)
+      clientId: `nestjs_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+
+      // RECONNECT
       clean: true,
+      reconnectPeriod: 1000,
+
+      // TLS
+      // HiveMQ Cloud dùng CA public → Node.js OK sẵn
+      // Nếu gặp lỗi TLS thì bật dòng dưới để test
+      rejectUnauthorized: false,
     });
 
     this.client.on('connect', () => {
@@ -35,7 +50,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
         if (err) {
           console.error('Subscribe error:', err.message);
         } else {
-          console.log('Subscribed cell_info');
+          console.log('Subscribed topic: cell_info');
         }
       });
     });
@@ -60,8 +75,7 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
           console.warn('MQTT payload missing deviceId');
           return;
         }
-
-        // 👇 GỌI CHUNG LOGIC VỚI API HTTP
+        console.log('Payload', payload);
         await this.dataService.saveData(deviceId, payload);
       } catch (err) {
         console.error('Invalid MQTT payload:', err.message);
@@ -73,7 +87,11 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.client.on('error', (err) => {
-      console.error(' MQTT error:', err.message);
+      console.error('MQTT error:', err.message);
+    });
+
+    this.client.on('close', () => {
+      console.warn('MQTT connection closed');
     });
   }
 
@@ -86,7 +104,11 @@ export class MqttService implements OnModuleInit, OnModuleDestroy {
     const payload =
       typeof message === 'string' ? message : JSON.stringify(message);
 
-    this.client.publish(topic, payload, { qos: 0 });
+    this.client.publish(topic, payload, { qos: 0 }, (err) => {
+      if (err) {
+        console.error('Publish error:', err.message);
+      }
+    });
   }
 
   onModuleDestroy() {

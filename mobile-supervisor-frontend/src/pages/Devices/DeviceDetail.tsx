@@ -48,20 +48,20 @@ L.Marker.prototype.options.icon = defaultIcon;
 
 // Các loại Icon tùy chỉnh
 const btsIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
+  iconUrl: "assets/cell-tower.png",
   iconSize: [40, 40],
   iconAnchor: [20, 40],
 });
 
 const neighborIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
+  iconUrl: "assets/cell-tower.png",
   iconSize: [30, 30],
   iconAnchor: [15, 30],
   className: "neighbor-marker",
 });
 
 const generalBtsIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/3256/3256778.png",
+  iconUrl: "assets/cell-tower.png",
   iconSize: [25, 25],
   iconAnchor: [12, 25],
   className: "general-bts-marker",

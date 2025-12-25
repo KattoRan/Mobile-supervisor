@@ -4,7 +4,7 @@
   gap: 12px;
   align-items: center;
   border-bottom: 1px solid #eee;
-  padding: 12px;
+  padding: 12px 0px;
   background: #ffffff;
   box-sizing: border-box;
 }
@@ -74,8 +74,5 @@
   .actions {
     order: 2;
     width: 100%;
-  }
-  .logoutButton {
-    margin-left: 0;
   }
 }

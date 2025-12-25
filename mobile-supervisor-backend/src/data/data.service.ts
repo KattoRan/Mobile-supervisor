@@ -2,13 +2,17 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BtsService } from '../bts/bts.service';
 import { EventsGateway } from '../events/events.gateway';
+import PQueue from 'p-queue';
 
 @Injectable()
 export class DataService {
+  // Queue giới hạn số BTS lookup chạy song song
+  private readonly btsQueue = new PQueue({ concurrency: 2 });
+
   constructor(
-    private prisma: PrismaService,
-    private btsService: BtsService,
-    private eventsGateway: EventsGateway,
+    private readonly prisma: PrismaService,
+    private readonly btsService: BtsService,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   async saveData(deviceId: string, dto: any) {
@@ -20,23 +24,24 @@ export class DataService {
     const cellTowers = Array.isArray(dto.cellTowers) ? dto.cellTowers : [];
     const now = new Date();
 
-    // --- BƯỚC 1: LƯU DATABASE ---
-    await this.prisma.$transaction(async (tx) => {
-      // 1. Lưu vị trí GPS
-      await tx.location_history.create({
-        data: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          recorded_at: now,
-          device: {
-            connect: { id: deviceId },
-          },
-        },
-      });
+    // =========================
+    // 1️⃣ LƯU GPS LOCATION
+    // =========================
+    await this.prisma.location_history.create({
+      data: {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        recorded_at: now,
+        device_id: deviceId,
+      },
+    });
 
-      // 2. Lưu danh sách Cell Towers
-      if (cellTowers.length > 0) {
-        const towersData = cellTowers.map((tower, index) => ({
+    // =========================
+    // 2️⃣ LƯU CELL TOWER HISTORY
+    // =========================
+    if (cellTowers.length > 0) {
+      await this.prisma.cell_tower_history.createMany({
+        data: cellTowers.map((tower, index) => ({
           device_id: deviceId,
           type: tower.type,
           mcc: tower.mcc,
@@ -48,50 +53,52 @@ export class DataService {
           pci: tower.pci ?? null,
           recorded_at: now,
 
-          // QUAN TRỌNG: Phần tử đầu tiên (index 0) là Serving Cell
+          // Tower đầu tiên là Serving Cell
           is_serving: index === 0,
-        }));
+        })),
+      });
+    }
 
-        await tx.cell_tower_history.createMany({
-          data: towersData,
-          skipDuplicates: true,
-        });
-      }
-    });
-
-    // --- BƯỚC 2: BẮN SOCKET REALTIME ---
-    // Chỉ lấy Serving Cell (index 0) để vẽ dây nối trên bản đồ
-    const servingCell = cellTowers.length > 0 ? cellTowers[0] : null;
+    // =========================
+    // 3️⃣ SOCKET REALTIME
+    // =========================
+    const servingCell = cellTowers[0];
 
     this.eventsGateway.server.emit('device_moved', {
-      deviceId: deviceId,
+      deviceId,
       lat: location.latitude,
       lon: location.longitude,
-
-      // Gửi thông tin Serving Cell để Frontend vẽ đường nối
       cid: servingCell?.cid,
       lac: servingCell?.lac,
-      rssi: servingCell?.rssi ?? servingCell?.signalDbm, // Ưu tiên lấy RSSI hoặc dBm
-
+      rssi: servingCell?.rssi ?? servingCell?.signalDbm,
       timestamp: now.toISOString(),
     });
 
-    // --- BƯỚC 3: TRA CỨU BTS (Background) ---
-    // Vẫn lookup tất cả (cả serving và neighbor) để làm giàu dữ liệu bản đồ
-    if (cellTowers.length > 0) {
-      Promise.allSettled(
-        cellTowers.map((tower) =>
-          this.btsService.getOrFetchStation(
-            tower.mcc,
-            tower.mnc,
-            tower.lac,
-            tower.cid,
-            tower.type,
-          ),
-        ),
-      ).catch((err) => console.error('Lỗi cập nhật BTS:', err));
-    }
+    // =========================
+    // 4️⃣ BTS LOOKUP (BACKGROUND + THROTTLE)
+    // =========================
+    this.lookupBtsInBackground(cellTowers);
 
-    return { success: true, message: 'Data saved & broadcasted' };
+    return {
+      success: true,
+      message: 'Data saved & broadcasted',
+    };
+  }
+
+  // =========================
+  // BTS LOOKUP QUEUED
+  // =========================
+  private lookupBtsInBackground(cellTowers: any[]) {
+    for (const tower of cellTowers) {
+      this.btsQueue.add(() =>
+        this.btsService.getOrFetchStation(
+          tower.mcc,
+          tower.mnc,
+          tower.lac,
+          tower.cid,
+          tower.type,
+        ),
+      );
+    }
   }
 }

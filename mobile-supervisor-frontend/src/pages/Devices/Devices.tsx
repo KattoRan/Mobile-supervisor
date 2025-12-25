@@ -4,6 +4,7 @@ import DeviceTable from "../../components/table/device/DeviceTable";
 import DeviceDetail from "./DeviceDetail";
 import deviceService from "../../services/device";
 import type { DeviceRow } from "../../components/table/device/DeviceRow";
+import SearchFilterBar from "../../layout/topbar/searchFilterBar";
 
 const headerStyle: React.CSSProperties = {
   display: "flex",
@@ -54,6 +55,9 @@ const Devices: React.FC = () => {
   const [page, setPage] = useState<number>(1);
   const limit = 20;
   const [hasMore, setHasMore] = useState<boolean>(true);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState("");
 
   const mapToDeviceRow = (item: any): DeviceRow => {
     const lastLoc = item.location_history?.[0] || item.last_location;
@@ -184,6 +188,18 @@ const Devices: React.FC = () => {
     );
   }
 
+  const filteredData = deviceData.filter((device) => {
+    const q = searchQuery.toLowerCase();
+    return (
+      (device.userName.toLowerCase().includes(q) ||
+        device.deviceName.toLowerCase().includes(q) ||
+        device.phoneNumber?.toLowerCase().includes(q)) &&
+      (!filter ||
+        (filter === "active" && device.status === "online") ||
+        (filter === "inactive" && device.status === "offline"))
+    );
+  });
+
   return (
     <div>
       <div style={headerStyle}>
@@ -204,8 +220,14 @@ const Devices: React.FC = () => {
         </button>
       </div>
 
+      <SearchFilterBar
+        onSearch={setSearchQuery}
+        onFilter={setFilter}
+        enableFilter
+      />
+
       <DeviceTable
-        data={deviceData}
+        data={filteredData}
         loading={loading}
         hasMore={hasMore}
         onLoadMore={handleLoadMore}

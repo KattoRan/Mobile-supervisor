@@ -4,7 +4,6 @@ import {
   Users,
   Smartphone,
   Radio,
-  TrendingUp,
   MapPin,
   Activity,
   AlertTriangle,
@@ -55,7 +54,6 @@ interface StatCardProps {
   value: string;
   subtitle?: string;
   color: string;
-  trend?: number;
 }
 
 const fetchDashboardData = async (): Promise<DashboardData> => {
@@ -84,7 +82,6 @@ const StatCard: React.FC<StatCardProps> = ({
   value,
   subtitle,
   color,
-  trend,
 }) => {
   const colorClass = color.replace("text-", "");
   const bgColor = `bg-${colorClass.replace("600", "100")}`;
@@ -101,13 +98,6 @@ const StatCard: React.FC<StatCardProps> = ({
           <Icon className={`w-6 h-6 ${color}`} />
         </div>
       </div>
-      {trend && (
-        <div className={styles.statCardTrend}>
-          <TrendingUp className="w-4 h-4 text-green-500" />
-          <span className={styles.trendValue}>{trend}%</span>
-          <span className={styles.trendLabel}>so với hôm qua</span>
-        </div>
-      )}
     </div>
   );
 };
@@ -225,7 +215,6 @@ const Dashboard: React.FC = () => {
             value={data.summary.totalDevices.toLocaleString()}
             subtitle={`${data.summary.activeDevices} đang hoạt động`}
             color="text-blue-600"
-            trend={8.2}
           />
           <StatCard
             icon={Users}
@@ -233,7 +222,6 @@ const Dashboard: React.FC = () => {
             value={data.summary.totalUsers.toLocaleString()}
             subtitle="Đã đăng ký"
             color="text-green-600"
-            trend={3.1}
           />
           <StatCard
             icon={Radio}

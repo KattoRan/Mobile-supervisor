@@ -216,42 +216,44 @@ export class DashboardService {
   private async getTopLocations() {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-    // Lấy location history gần đây
-    const locations = await this.prisma.location_history.findMany({
+    const raw = await this.prisma.location_history.findMany({
       where: {
         recorded_at: { gte: fiveMinutesAgo },
+        district: { not: null },
       },
-      select: { latitude: true, longitude: true },
+      select: {
+        district: true,
+        device_id: true,
+      },
     });
 
-    // Đếm theo district (giả sử address có format: "Street, District, City")
-    const locationCounts: Record<string, number> = {};
+    // Khử trùng lặp device theo district
+    const map = new Map<string, Set<string>>();
 
-    locations.forEach((loc) => {
-      if (!loc.latitude.toNumber() || !loc.longitude.toNumber()) return;
+    for (const row of raw) {
+      if (!row.district) continue; // chặn null
 
-      // Extract district from address
-      const parts =
-        `${loc.latitude.toNumber()}, ${loc.longitude.toNumber()}`.split(',');
-      const location = parts.length > 1 ? parts[1].trim() : parts[0].trim();
+      if (!map.has(row.district)) {
+        map.set(row.district, new Set());
+      }
 
-      locationCounts[location] = (locationCounts[location] || 0) + 1;
-    });
+      map.get(row.district)!.add(row.device_id);
+    }
 
-    // Convert to array and sort
-    const totalDevices =
-      Object.values(locationCounts).reduce((a, b) => a + b, 0) || 1;
-
-    const topLocations = Object.entries(locationCounts)
-      .map(([location, devices]) => ({
-        location,
-        devices,
-        percentage: Math.round(((devices / totalDevices) as number) * 100),
+    const result = Array.from(map.entries())
+      .map(([district, devicesSet]) => ({
+        district,
+        devices: devicesSet.size,
       }))
       .sort((a, b) => b.devices - a.devices)
       .slice(0, 5);
 
-    return topLocations;
+    const max = result[0]?.devices || 1;
+
+    return result.map((item) => ({
+      ...item,
+      percentage: Math.round((item.devices / max) * 100),
+    }));
   }
 
   /**

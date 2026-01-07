@@ -12,65 +12,79 @@ export class DeviceService {
 
   async findAll(page: number = 1, limit: number = 20) {
     const skip = (page - 1) * limit;
-    const total = await this.prisma.devices.count();
+    console.time('TOTAL findAll');
 
-    const devices = await this.prisma.devices.findMany({
-      skip,
-      take: limit,
-      orderBy: { last_seen: 'desc' },
-      select: {
-        id: true,
-        model: true,
-        phone_number: true,
-        user: {
-          select: {
-            id: true,
-            full_name: true,
+    console.time('Query devices + count');
+    const [total, devices] = await Promise.all([
+      this.prisma.devices.count(),
+      this.prisma.devices.findMany({
+        skip,
+        take: limit,
+        orderBy: { last_seen: 'desc' },
+        select: {
+          id: true,
+          model: true,
+          phone_number: true,
+          user: {
+            select: { id: true, full_name: true },
+          },
+          location_history: {
+            orderBy: { recorded_at: 'desc' },
+            take: 1,
           },
         },
-        location_history: {
-          orderBy: { recorded_at: 'desc' },
-          take: 1,
-        },
-        cell_tower_history: true,
+      }),
+    ]);
+    console.timeEnd('Query devices + count');
+
+    const deviceIds = devices.map((d) => d.id);
+
+    // Lấy recorded_at mới nhất cho mỗi device
+    console.time('GroupBy latestTimes');
+    const latestTimes = await this.prisma.cell_tower_history.groupBy({
+      by: ['device_id'],
+      where: { device_id: { in: deviceIds } },
+      _max: { recorded_at: true },
+    });
+    console.timeEnd('GroupBy latestTimes');
+
+    // Lấy tất cả cell tower tại các thời điểm mới nhất
+    console.time('Query allLatestCells');
+    const allLatestCells = await this.prisma.cell_tower_history.findMany({
+      where: {
+        OR: latestTimes.map((t) => ({
+          device_id: t.device_id,
+          recorded_at: t._max.recorded_at!,
+        })),
       },
     });
+    console.timeEnd('Query allLatestCells');
 
-    for (const device of devices) {
-      const latest = await this.prisma.cell_tower_history.findFirst({
-        where: { device_id: device.id },
-        orderBy: { recorded_at: 'desc' },
-        select: { recorded_at: true },
-      });
+    // Group theo device_id
+    console.time('Group in memory');
+    const cellMap = new Map<string, any[]>();
 
-      if (!latest) {
-        device.cell_tower_history = [];
-        continue;
+    for (const cell of allLatestCells) {
+      if (!cellMap.has(cell.device_id)) {
+        cellMap.set(cell.device_id, []);
       }
-
-      const cells = await this.prisma.cell_tower_history.findMany({
-        where: {
-          device_id: device.id,
-          recorded_at: latest.recorded_at,
-        },
-      });
-
-      if (cells.length === 0) {
-        device.cell_tower_history = [];
-        continue;
-      }
-
-      const servingCell = cells.find((c) => c.is_serving) || cells[0];
-
-      device.cell_tower_history = servingCell ? [servingCell] : [];
+      cellMap.get(cell.device_id)!.push(cell);
     }
+    console.timeEnd('Group in memory');
 
+    // Transform
+    console.time('Transform results');
     const transformed = devices.map((device) => {
       const lastLoc = device.location_history?.[0];
-      const lastCell = device.cell_tower_history?.[0];
+
+      const cells = cellMap.get(device.id) || [];
+      const servingCell = cells.find((c) => c.is_serving) || cells[0] || null;
 
       return {
-        ...device,
+        id: device.id,
+        model: device.model,
+        phone_number: device.phone_number,
+        user: device.user,
 
         last_location: lastLoc
           ? {
@@ -80,21 +94,21 @@ export class DeviceService {
             }
           : null,
 
-        last_cell: lastCell
+        last_cell: servingCell
           ? {
-              cid: lastCell.cid,
-              lac: lastCell.lac,
-              mcc: lastCell.mcc,
-              mnc: lastCell.mnc,
-              rssi: lastCell.rssi,
-              recorded_at: lastCell.recorded_at,
+              cid: servingCell.cid,
+              lac: servingCell.lac,
+              mcc: servingCell.mcc,
+              mnc: servingCell.mnc,
+              rssi: servingCell.rssi,
+              recorded_at: servingCell.recorded_at,
             }
           : null,
-
-        location_history: undefined,
-        cell_tower_history: undefined,
       };
     });
+    console.timeEnd('Transform results');
+
+    console.timeEnd('TOTAL findAll');
 
     return {
       data: transformed,
@@ -111,6 +125,7 @@ export class DeviceService {
    * API cho Bản đồ chi tiết (Map): Lấy trạng thái hiện tại
    */
   async findOne(id: string) {
+    console.time('TOTAL findOne');
     const device = await this.prisma.devices.findUnique({
       where: { id },
       include: {
@@ -164,7 +179,7 @@ export class DeviceService {
       );
       neighborStations.push(...results.filter((s) => s !== null));
     }
-
+    console.timeEnd('TOTAL findOne');
     return {
       ...device,
       current_location: currentLocation,

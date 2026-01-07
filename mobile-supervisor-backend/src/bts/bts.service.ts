@@ -103,7 +103,7 @@ export class BtsService {
       const batch: BTSRecord[] = [];
       const BATCH_SIZE = 1000;
 
-      this.logger.log(`🚀 Bắt đầu import CSV: ${filePath}`);
+      this.logger.log(`Bắt đầu import CSV: ${filePath}`);
 
       const stream = fs.createReadStream(filePath).pipe(
         csv({
@@ -194,7 +194,7 @@ export class BtsService {
           await insertBatch();
 
           this.logger.log(
-            `🎉 Import xong! total=${total}, inserted=${inserted}, skipped=${skipped}`,
+            `Import xong! total=${total}, inserted=${inserted}, skipped=${skipped}`,
           );
 
           resolve({ total, inserted, skipped });
@@ -222,7 +222,7 @@ export class BtsService {
 
       return res.data?.display_name || '';
     } catch (e) {
-      this.logger.warn(`⚠️ LocationIQ error for ${lat},${lon}: ${e.message}`);
+      this.logger.warn(`LocationIQ error for ${lat},${lon}: ${e.message}`);
       return '';
     }
   }
@@ -233,7 +233,7 @@ export class BtsService {
       take: 2000,
     });
 
-    // this.logger.log(`📍 Đang cập nhật địa chỉ cho ${stations.length} cell...`);
+    // this.logger.log(`Đang cập nhật địa chỉ cho ${stations.length} cell...`);
 
     // Free tier LocationIQ: 2 request/giây
     const limiter = new Bottleneck({
@@ -268,7 +268,7 @@ export class BtsService {
           updated++;
         } catch (e) {
           this.logger.warn(
-            `⚠️ LocationIQ error for ${s.lat},${s.lon}: ${e?.message}`,
+            `LocationIQ error for ${s.lat},${s.lon}: ${e?.message}`,
           );
         }
       }),
@@ -276,7 +276,7 @@ export class BtsService {
 
     await Promise.all(tasks);
 
-    this.logger.log(`✅ Đã cập nhật thành công ${updated} địa chỉ`);
+    this.logger.log(`Đã cập nhật thành công ${updated} địa chỉ`);
 
     return { updated };
   }

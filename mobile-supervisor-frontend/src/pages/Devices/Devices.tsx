@@ -6,6 +6,9 @@ import deviceService from "../../services/device";
 import type { DeviceRow } from "../../components/table/device/DeviceRow";
 import SearchFilterBar from "../../layout/topbar/searchFilterBar";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+
 const headerStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -131,7 +134,7 @@ const Devices: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const socket = io("http://13.236.208.62:3000");
+    const socket = io(API_BASE_URL);
 
     socket.on("connect", () => {
       console.log("Connected to Socket Server");

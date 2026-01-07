@@ -27,6 +27,9 @@ import DateRangeExportCSV from "../../components/exportCsv/exportCsv";
 import iconMarker from "leaflet/dist/images/marker-icon.png";
 import iconRetina from "leaflet/dist/images/marker-icon-2x.png";
 import iconShadow from "leaflet/dist/images/marker-shadow.png";
+import cellTowerIcon from "../../assets/cell-tower.png";
+import { FaUser } from "react-icons/fa";
+import { MdSignalCellular4Bar } from "react-icons/md";
 
 // --- HẰNG SỐ CẤU HÌNH ---
 const UPDATE_THROTTLE = 1000; // Tần suất update UI (ms)
@@ -48,21 +51,21 @@ L.Marker.prototype.options.icon = defaultIcon;
 
 // Các loại Icon tùy chỉnh
 const btsIcon = new L.Icon({
-  iconUrl: "assets/cell-tower.png",
-  iconSize: [40, 40],
+  iconUrl: cellTowerIcon,
+  iconSize: [60, 60],
   iconAnchor: [20, 40],
 });
 
 const neighborIcon = new L.Icon({
-  iconUrl: "assets/cell-tower.png",
-  iconSize: [30, 30],
+  iconUrl: cellTowerIcon,
+  iconSize: [50, 50],
   iconAnchor: [15, 30],
   className: "neighbor-marker",
 });
 
 const generalBtsIcon = new L.Icon({
-  iconUrl: "assets/cell-tower.png",
-  iconSize: [25, 25],
+  iconUrl: cellTowerIcon,
+  iconSize: [45, 45],
   iconAnchor: [12, 25],
   className: "general-bts-marker",
 });
@@ -428,9 +431,10 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             borderRadius: "8px",
           }}
         >
-          <h3 style={{ margin: "0 0 10px", color: "#374151" }}>
-            👤 Thông tin chủ sở hữu
-          </h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <FaUser size={16} />
+            <h3>Thông tin chủ sở hữu</h3>
+          </div>
           <div>
             <div>
               <strong>Họ tên:</strong> {info.user?.full_name}
@@ -450,9 +454,10 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
             borderRadius: "8px",
           }}
         >
-          <h3 style={{ margin: "0 0 10px", color: "#374151" }}>
-            📱 Trạng thái kết nối
-          </h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <MdSignalCellular4Bar size={18} />
+            <h3>Trạng thái kết nối</h3>
+          </div>
           <div>
             <div>
               <strong>Model:</strong> {info.model}

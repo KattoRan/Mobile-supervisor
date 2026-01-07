@@ -45,6 +45,7 @@ model location_history {
   device_id   String
   latitude    Decimal  @db.Decimal(10, 8)
   longitude   Decimal  @db.Decimal(11, 8)
+  district    String?
   recorded_at DateTime
 
   device devices @relation(fields: [device_id], references: [id], onDelete: Cascade, onUpdate: Cascade)

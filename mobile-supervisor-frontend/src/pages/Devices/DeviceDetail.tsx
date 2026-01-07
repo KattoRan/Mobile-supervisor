@@ -123,7 +123,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
   const [allBtsInView, setAllBtsInView] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [loadingBts, setLoadingBts] = useState(false);
+  // const [loadingBts, setLoadingBts] = useState(false);
 
   // --- REFS ĐỂ XỬ LÝ LOGIC ---
   const pendingUpdate = useRef<any>(null);
@@ -182,7 +182,6 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
 
   const loadBtsInViewport = async (bounds: L.LatLngBounds) => {
     try {
-      setLoadingBts(true);
       const params = {
         minLat: bounds.getSouth(),
         maxLat: bounds.getNorth(),
@@ -199,7 +198,7 @@ const DeviceDetail: React.FC<DeviceDetailProps> = ({ deviceId, onBack }) => {
     } catch (error) {
       console.error("Lỗi tải BTS:", error);
     } finally {
-      setLoadingBts(false);
+      // setLoadingBts(false);
     }
   };
 

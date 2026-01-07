@@ -14,7 +14,7 @@ export const KPISection: React.FC<KPISectionProps> = ({
   btsLookupsInSession = 0,
   offlineInLast24h,
 }) => {
-  const { total, online, idle, offline, ratioActive } = useMemo(() => {
+  const { total, online, idle, ratioActive } = useMemo(() => {
     const total = devices.length;
     let online = 0;
     let idle = 0;
